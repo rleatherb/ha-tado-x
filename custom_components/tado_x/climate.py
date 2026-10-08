@@ -10,6 +10,7 @@ from homeassistant.components.climate import (
     HVACAction,
     HVACMode,
 )
+from homeassistant.util import dt as dt_util
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import ATTR_TEMPERATURE, UnitOfTemperature
 from homeassistant.core import HomeAssistant, callback
@@ -225,6 +226,13 @@ class TadoXClimate(CoordinatorEntity[TadoXDataUpdateCoordinator], ClimateEntity)
 
         if room.open_window_detected:
             attrs["open_window_detected"] = True
+            if room.open_window_ends_at:
+                ends_at = dt_util.parse_datetime(room.open_window_ends_at)
+                if ends_at is not None and ends_at.tzinfo is not None:
+                    attrs["open_window_ends_at"] = room.open_window_ends_at
+                    attrs["open_window_remaining_minutes"] = round(
+                        max(0, (ends_at - dt_util.utcnow()).total_seconds()) / 60
+                    )
 
         return attrs
 

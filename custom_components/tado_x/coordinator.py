@@ -59,6 +59,7 @@ class TadoXRoom:
     manual_control_type: str | None = None
     boost_mode: bool = False
     open_window_detected: bool = False
+    open_window_ends_at: str | None = None
     next_schedule_change: str | None = None
     next_schedule_temperature: float | None = None
     devices: list[TadoXDevice] = field(default_factory=list)
@@ -396,6 +397,7 @@ class TadoXDataUpdateCoordinator(DataUpdateCoordinator[TadoXData]):
                     manual_control_type=manual_type,
                     boost_mode=room_data.get("boostMode") is not None,
                     open_window_detected=room_data.get("openWindow") is not None,
+                    open_window_ends_at=(room_data.get("openWindow") or {}).get("projectedExpiry"),
                     next_schedule_change=next_change_time,
                     next_schedule_temperature=next_change_temp,
                 )
