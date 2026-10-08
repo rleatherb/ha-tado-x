@@ -130,10 +130,18 @@
       }
     },
     "sensor": {
-      "temperature": { "name": "Temperatura" },
-      "humidity": { "name": "Umidità" },
-      "heating_power": { "name": "Potenza di riscaldamento" },
-      "heating_time_today": { "name": "Tempo di riscaldamento oggi" },
+      "temperature": {
+        "name": "Temperatura"
+      },
+      "humidity": {
+        "name": "Umidità"
+      },
+      "heating_power": {
+        "name": "Potenza di riscaldamento"
+      },
+      "heating_time_today": {
+        "name": "Tempo di riscaldamento oggi"
+      },
       "battery": {
         "name": "Batteria",
         "state": {
@@ -141,13 +149,27 @@
           "low": "Bassa"
         }
       },
-      "device_temperature": { "name": "Temperatura dispositivo" },
-      "temperature_offset": { "name": "Offset temperatura" },
-      "api_calls_today": { "name": "Chiamate API oggi" },
-      "api_quota_remaining": { "name": "Quota API rimanente" },
-      "api_quota_limit": { "name": "Limite quota API" },
-      "api_usage_percentage": { "name": "Utilizzo API" },
-      "api_reset_time": { "name": "Reset quota API" },
+      "device_temperature": {
+        "name": "Temperatura dispositivo"
+      },
+      "temperature_offset": {
+        "name": "Offset temperatura"
+      },
+      "api_calls_today": {
+        "name": "Chiamate API oggi"
+      },
+      "api_quota_remaining": {
+        "name": "Quota API rimanente"
+      },
+      "api_quota_limit": {
+        "name": "Limite quota API"
+      },
+      "api_usage_percentage": {
+        "name": "Utilizzo API"
+      },
+      "api_reset_time": {
+        "name": "Reset quota API"
+      },
       "api_status": {
         "name": "Stato API",
         "state": {
@@ -162,15 +184,21 @@
           "AWAY": "Fuori casa"
         }
       },
-      "presence_mode": {
-        "name": "Modalità presenza",
+      "outdoor_temperature": {
+        "name": "Temperatura esterna"
+      },
+      "solar_intensity": {
+        "name": "Intensità solare"
+      },
+      "dhw_state": {
+        "name": "Stato acqua calda",
         "state": {
-          "MANUAL": "Manuale",
-          "AUTO": "Automatico (Geofencing)"
+          "OFF": "Spento",
+          "SCHEDULE_OFF": "Programmazione spenta",
+          "SCHEDULE_ON": "Programmazione accesa",
+          "BOOST": "Boost"
         }
       },
-      "outdoor_temperature": { "name": "Temperatura esterna" },
-      "solar_intensity": { "name": "Intensità solare" },
       "weather_state": {
         "name": "Stato meteo",
         "state": {
@@ -206,44 +234,60 @@
       }
     },
     "binary_sensor": {
-      "window_open": { "name": "Finestra aperta" },
-      "heating": { "name": "Riscaldamento" },
-      "overlay_active": { "name": "Controllo manuale" },
-      "connectivity": { "name": "Connettività" },
-      "battery_low": { "name": "Batteria scarica" }
+      "window_open": {
+        "name": "Finestra aperta"
+      },
+      "heating": {
+        "name": "Riscaldamento"
+      },
+      "overlay_active": {
+        "name": "Controllo manuale"
+      },
+      "connectivity": {
+        "name": "Connettività"
+      },
+      "battery_low": {
+        "name": "Batteria scarica"
+      }
     },
     "switch": {
-      "child_lock": { "name": "Blocco bambini" },
-      "open_window": { "name": "Finestra aperta" },
-      "flow_temp_auto_adaptation": { "name": "Adattamento auto temperatura flusso" }
+      "child_lock": {
+        "name": "Blocco bambini"
+      },
+      "open_window": {
+        "name": "Finestra aperta"
+      },
+      "flow_temp_auto_adaptation": {
+        "name": "Adattamento auto temperatura flusso"
+      }
     },
     "number": {
-      "max_flow_temperature": { "name": "Temperatura massima flusso" }
-      ,
-      "timer_duration": { "name": "Durata timer" }
-    },
-    "select": {
-      "presence_mode": {
-        "name": "Modalità presenza",
-        "state": {
-          "home": "Casa",
-          "away": "Fuori casa",
-          "auto": "Automatico (Geofencing)"
-        }
+      "max_flow_temperature": {
+        "name": "Temperatura massima flusso"
       },
-      "termination_type": {
-        "name": "Tipo terminazione",
-        "state": {
-          "TIMER": "Timer",
-          "MANUAL": "Manuale",
-          "NEXT_TIME_BLOCK": "Prossimo blocco orario"
-        }
+      "timer_duration": {
+        "name": "Durata timer"
       }
     },
     "button": {
-      "boost_all": { "name": "Boost globale" },
-      "disable_all": { "name": "Spegni tutto" },
-      "resume_schedules": { "name": "Riprendi programmazioni" }
+      "boost_all": {
+        "name": "Boost globale"
+      },
+      "disable_all": {
+        "name": "Spegni tutto"
+      },
+      "resume_schedules": {
+        "name": "Riprendi programmazioni"
+      },
+      "boost_hot_water": {
+        "name": "Boost L'acqua calda"
+      },
+      "disable_hot_water": {
+        "name": "Spegni l'acqua calda"
+      },
+      "resume_hot_water_schedule": {
+        "name": "Riprendi l'acqua calda programmazioni"
+      }
     },
     "device_tracker": {
       "mobile_device": {
@@ -255,12 +299,50 @@
           "unknown": "Sconosciuto"
         },
         "state_attributes": {
-          "geofencing_enabled": { "name": "Geofencing attivo" },
-          "at_home": { "name": "A casa" },
-          "platform": { "name": "Piattaforma" },
-          "os_version": { "name": "Versione OS" },
-          "model": { "name": "Modello" },
-          "locale": { "name": "Lingua" }
+          "geofencing_enabled": {
+            "name": "Geofencing attivo"
+          },
+          "at_home": {
+            "name": "A casa"
+          },
+          "platform": {
+            "name": "Piattaforma"
+          },
+          "os_version": {
+            "name": "Versione OS"
+          },
+          "model": {
+            "name": "Modello"
+          },
+          "locale": {
+            "name": "Lingua"
+          }
+        }
+      }
+    },
+    "select": {
+      "presence_mode": {
+        "name": "Modalità presenza",
+        "state": {
+          "home": "Casa",
+          "away": "Fuori casa",
+          "auto": "Automatico (Geofencing)"
+        }
+      },
+      "dhw_mode": {
+        "name": "Modalità acqua calda",
+        "state": {
+          "OFF": "Spento",
+          "SCHEDULE": "Programmazione",
+          "BOOST": "Boost"
+        }
+      },
+      "termination_type": {
+        "name": "Tipo terminazione",
+        "state": {
+          "TIMER": "Timer",
+          "MANUAL": "Manuale",
+          "NEXT_TIME_BLOCK": "Prossimo blocco orario"
         }
       }
     }

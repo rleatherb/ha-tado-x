@@ -184,18 +184,20 @@
           "AWAY": "Unterwegs"
         }
       },
-      "presence_mode": {
-        "name": "Anwesenheitsmodus",
-        "state": {
-          "MANUAL": "Manuell",
-          "AUTO": "Auto (Geofencing)"
-        }
-      },
       "outdoor_temperature": {
         "name": "Außentemperatur"
       },
       "solar_intensity": {
         "name": "Sonnenintensität"
+      },
+      "dhw_state": {
+        "name": "Warmwasserzustand",
+        "state": {
+          "OFF": "Aus",
+          "SCHEDULE_OFF": "Zeitplan Aus",
+          "SCHEDULE_ON": "Zeitplan Ein",
+          "BOOST": "Hochfahren"
+        }
       },
       "weather_state": {
         "name": "Wetterlage",
@@ -267,24 +269,6 @@
         "name": "Timerdauer"
       }
     },
-    "select": {
-      "presence_mode": {
-        "name": "Anwesenheitsmodus",
-        "state": {
-          "home": "Zuhause",
-          "away": "Unterwegs",
-          "auto": "Auto (Geofencing)"
-        }
-      },
-      "termination_type": {
-        "name": "Abschaltart",
-        "state": {
-          "TIMER": "Timer",
-          "MANUAL": "Manuell",
-          "NEXT_TIME_BLOCK": "Nächster Zeitblock"
-        }
-      }
-    },
     "button": {
       "boost_all": {
         "name": "Alle auf max. stellen"
@@ -294,6 +278,15 @@
       },
       "resume_schedules": {
         "name": "Zeitplan fortsetzen"
+      },
+      "boost_hot_water": {
+        "name": "Warmwasser steigern"
+      },
+      "disable_hot_water": {
+        "name": "Schalten sie heißes wasser aus"
+      },
+      "resume_hot_water_schedule": {
+        "name": "Warmwasserplan wieder aufnehmen"
       }
     },
     "device_tracker": {
@@ -324,6 +317,32 @@
           "locale": {
             "name": "Locale"
           }
+        }
+      }
+    },
+    "select": {
+      "presence_mode": {
+        "name": "Anwesenheitsmodus",
+        "state": {
+          "home": "Zuhause",
+          "away": "Unterwegs",
+          "auto": "Auto (Geofencing)"
+        }
+      },
+      "dhw_mode": {
+        "name": "Warmwasser-Modus",
+        "state": {
+          "OFF": "Aus",
+          "SCHEDULE": "Zeitplan",
+          "BOOST": "Hochfahren"
+        }
+      },
+      "termination_type": {
+        "name": "Abschaltart",
+        "state": {
+          "TIMER": "Timer",
+          "MANUAL": "Manuell",
+          "NEXT_TIME_BLOCK": "Nächster Zeitblock"
         }
       }
     }

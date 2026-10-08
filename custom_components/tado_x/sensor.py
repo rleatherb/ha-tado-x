@@ -4,6 +4,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any
 
 from homeassistant.components.sensor import (
@@ -12,6 +13,7 @@ from homeassistant.components.sensor import (
     SensorEntityDescription,
     SensorStateClass,
 )
+from homeassistant.util import dt as dt_util
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import PERCENTAGE, UnitOfTemperature, UnitOfTime
 from homeassistant.core import HomeAssistant, callback
@@ -19,7 +21,7 @@ from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import API_QUOTA_FREE_TIER, API_QUOTA_PREMIUM, DOMAIN
+from .const import API_QUOTA_FREE_TIER, API_QUOTA_PREMIUM, DOMAIN, FEATURE_ENTITY_MAP
 from .coordinator import (
     TadoXData,
     TadoXDataUpdateCoordinator,
@@ -204,6 +206,26 @@ def _get_presence_mode(data: TadoXData) -> str:
         return "MANUAL"
     return "AUTO"
 
+def _get_domestic_hot_water_state(data: TadoXData) -> str:
+    """Get the state of DHW (OFF, SCHEDULE_OFF, SCHEDULE_ON, BOOST)."""
+    return data.dhw_state;
+
+
+def _get_dhw_boost_ends(data: TadoXData) -> datetime | None:
+    """Return the boost end time as a timezone-aware datetime."""
+    if data.dhw_state != "BOOST" or not data.dhw_boost_ends:
+        return None
+    return dt_util.parse_datetime(data.dhw_boost_ends)
+
+
+def _get_dhw_next_schedule_change(data: TadoXData) -> datetime | None:
+    """Return the next schedule transition while following the schedule."""
+    if data.dhw_state not in ("SCHEDULE_ON", "SCHEDULE_OFF"):
+        return None
+    if not data.dhw_next_schedule_change:
+        return None
+    return dt_util.parse_datetime(data.dhw_next_schedule_change)
+
 
 HOME_SENSORS: tuple[TadoXHomeSensorEntityDescription, ...] = (
     TadoXHomeSensorEntityDescription(
@@ -265,6 +287,28 @@ HOME_SENSORS: tuple[TadoXHomeSensorEntityDescription, ...] = (
         device_class=SensorDeviceClass.ENUM,
         options=["AUTO", "MANUAL"],
         value_fn=_get_presence_mode,
+    ),
+    TadoXHomeSensorEntityDescription(
+        key="dhw_state",
+        translation_key="dhw_state",
+        icon="mdi:water-boiler",
+        device_class=SensorDeviceClass.ENUM,
+        options=["OFF", "SCHEDULE_OFF", "SCHEDULE_ON", "BOOST", "AWAY_OFF"],
+        value_fn=_get_domestic_hot_water_state,
+    ),
+    TadoXHomeSensorEntityDescription(
+        key="dhw_boost_ends",
+        name="Hot water boost ends",
+        icon="mdi:timer-outline",
+        device_class=SensorDeviceClass.TIMESTAMP,
+        value_fn=_get_dhw_boost_ends,
+    ),
+    TadoXHomeSensorEntityDescription(
+        key="dhw_next_schedule_change",
+        name="Hot water next schedule change",
+        icon="mdi:calendar-clock",
+        device_class=SensorDeviceClass.TIMESTAMP,
+        value_fn=_get_dhw_next_schedule_change,
     ),
 )
 
@@ -361,6 +405,55 @@ async def async_setup_entry(
                 entities.append(TadoXAirComfortSensor(coordinator, room_id, description))
 
     async_add_entities(entities)
+
+    # Set initial disabled_by state based on feature flags
+    from homeassistant.helpers import entity_registry as er
+    entity_registry = er.async_get(hass)
+    
+    # Disable entities based on feature flags
+    for entity_id, entity_entry in list(entity_registry.entities.items()):
+        # Only process Tado X sensor entities
+        if entity_entry.platform != DOMAIN or entity_entry.domain != "sensor":
+            continue
+        
+        if entity_entry.config_entry_id != entry.entry_id:
+            continue
+
+        # Preserve an explicit user decision to disable an entity.
+        if entity_entry.disabled_by not in (None, er.RegistryEntryDisabler.INTEGRATION):
+            continue
+
+        if not entity_entry.unique_id:
+            continue
+        
+        # Check if this entity matches a disabled feature
+        should_be_disabled = False
+        for feature_flag, entity_keys in FEATURE_ENTITY_MAP.items():
+            feature_enabled = getattr(coordinator, feature_flag, False)
+            
+            # Check if entity_key matches any of the disabled feature's keys
+            for entity_key in entity_keys:
+                if entity_entry.unique_id.endswith(f"_{entity_key}"):
+                    if not feature_enabled:
+                        should_be_disabled = True
+                    break
+            
+            if should_be_disabled:
+                break
+        
+        # Update disabled state
+        if should_be_disabled:
+            entity_registry.async_update_entity(
+                entity_id,
+                disabled_by=er.RegistryEntryDisabler.INTEGRATION,
+            )
+        else:
+            # Make sure it's enabled if the feature is on
+            if entity_entry.disabled_by == er.RegistryEntryDisabler.INTEGRATION:
+                entity_registry.async_update_entity(
+                    entity_id,
+                    disabled_by=None,
+                )
 
 
 class TadoXHomeSensor(CoordinatorEntity[TadoXDataUpdateCoordinator], SensorEntity):

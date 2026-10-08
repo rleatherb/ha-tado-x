@@ -27,6 +27,12 @@ add_meter_reading:
   name: Add meter reading
   description: Upload a meter reading to Tado Energy IQ
   fields:
+    home_id:
+      name: Tado home ID
+      description: Required when more than one Tado home is configured.
+      required: false
+      selector:
+        text:
     reading:
       name: Reading
       description: Meter reading value (integer)
@@ -49,6 +55,12 @@ set_eiq_tariff:
   name: Set energy tariff
   description: Set an energy tariff in Tado Energy IQ for cost calculations
   fields:
+    home_id:
+      name: Tado home ID
+      description: Required when more than one Tado home is configured.
+      required: false
+      selector:
+        text:
     tariff:
       name: Tariff
       description: Price per unit (e.g., 0.85 for €0.85/m³)
