@@ -288,15 +288,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         if not device:
             raise HomeAssistantError(f"Device {device_id} not found")
 
-        config_entry_id = next(
-            (
-                entry_id
-                for entry_id in device.config_entries
-                if entry_id in hass.data.get(DOMAIN, {})
-            ),
-            None,
-        )
-        if config_entry_id is None:
+        config_entry_id = device.config_entry_id
+        if config_entry_id not in hass.data.get(DOMAIN, {}):
             raise HomeAssistantError(
                 f"Could not determine Tado X config entry for device {device_id}"
             )
@@ -486,16 +479,28 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             schema=SERVICE_SET_CLIMATE_TIMER_SCHEMA,
         )
 
-    # Create the "Home" device before loading platforms to ensure via_device references work
-    # This prevents deprecation warnings about via_device referencing non-existing devices
+    # Register parent devices before entities so links use actual registry IDs.
     device_registry_instance = dr.async_get(hass)
-    device_registry_instance.async_get_or_create(
+    home_device = device_registry_instance.async_get_or_create(
         config_entry_id=entry.entry_id,
         identifiers={(DOMAIN, str(home_id))},
         name=f"{home_name} Home",
         manufacturer="Tado",
         model="Tado X Home",
     )
+    coordinator.parent_device_ids[(DOMAIN, str(home_id))] = home_device.id
+
+    for room_id, room in coordinator.data.rooms.items():
+        room_identifier = (DOMAIN, f"{home_id}_{room_id}")
+        room_device = device_registry_instance.async_get_or_create(
+            config_entry_id=entry.entry_id,
+            identifiers={room_identifier},
+            name=room.name,
+            manufacturer="Tado",
+            model="Tado X Room",
+            via_device_id=home_device.id,
+        )
+        coordinator.parent_device_ids[room_identifier] = room_device.id
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 

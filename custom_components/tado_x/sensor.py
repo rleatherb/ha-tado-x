@@ -293,7 +293,7 @@ HOME_SENSORS: tuple[TadoXHomeSensorEntityDescription, ...] = (
         translation_key="dhw_state",
         icon="mdi:water-boiler",
         device_class=SensorDeviceClass.ENUM,
-        options=["OFF", "SCHEDULE_OFF", "SCHEDULE_ON", "BOOST", "AWAY_OFF"],
+        options=["OFF", "SCHEDULE_OFF", "SCHEDULE_ON", "BOOST", "AWAY_OFF", "AWAY_ON"],
         value_fn=_get_domestic_hot_water_state,
     ),
     TadoXHomeSensorEntityDescription(
@@ -565,7 +565,7 @@ class TadoXRoomSensor(CoordinatorEntity[TadoXDataUpdateCoordinator], SensorEntit
             name=room_name,
             manufacturer="Tado",
             model="Tado X Room",
-            via_device=(DOMAIN, str(self.coordinator.home_id)),
+            via_device_id=self.coordinator.parent_device_ids[(DOMAIN, str(self.coordinator.home_id))],
         )
 
     @property
@@ -633,7 +633,7 @@ class TadoXDeviceSensor(CoordinatorEntity[TadoXDataUpdateCoordinator], SensorEnt
         }
 
         # Determine via_device - link to room if device has one, otherwise to home
-        via_device_id = (
+        via_device_identifier = (
             (DOMAIN, f"{self.coordinator.home_id}_{device.room_id}")
             if device.room_id
             else (DOMAIN, str(self.coordinator.home_id))
@@ -667,7 +667,7 @@ class TadoXDeviceSensor(CoordinatorEntity[TadoXDataUpdateCoordinator], SensorEnt
             model=device_type_models.get(device.device_type, device.device_type),
             serial_number=device.serial_number,
             sw_version=device.firmware_version,
-            via_device=via_device_id,
+            via_device_id=self.coordinator.parent_device_ids[via_device_identifier],
         )
 
     @property
@@ -723,7 +723,7 @@ class TadoXAirComfortSensor(CoordinatorEntity[TadoXDataUpdateCoordinator], Senso
             name=room_name,
             manufacturer="Tado",
             model="Tado X Room",
-            via_device=(DOMAIN, str(self.coordinator.home_id)),
+            via_device_id=self.coordinator.parent_device_ids[(DOMAIN, str(self.coordinator.home_id))],
         )
 
     @property

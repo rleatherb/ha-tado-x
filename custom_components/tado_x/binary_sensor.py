@@ -133,7 +133,7 @@ class TadoXRoomBinarySensor(CoordinatorEntity[TadoXDataUpdateCoordinator], Binar
             name=room_name,
             manufacturer="Tado",
             model="Tado X Room",
-            via_device=(DOMAIN, str(self.coordinator.home_id)),
+            via_device_id=self.coordinator.parent_device_ids[(DOMAIN, str(self.coordinator.home_id))],
         )
 
     @property
@@ -202,7 +202,7 @@ class TadoXDeviceBinarySensor(CoordinatorEntity[TadoXDataUpdateCoordinator], Bin
         }
 
         # Determine via_device - link to room if device has one, otherwise to home
-        via_device_id = (
+        via_device_identifier = (
             (DOMAIN, f"{self.coordinator.home_id}_{device.room_id}")
             if device.room_id
             else (DOMAIN, str(self.coordinator.home_id))
@@ -236,7 +236,7 @@ class TadoXDeviceBinarySensor(CoordinatorEntity[TadoXDataUpdateCoordinator], Bin
             model=device_type_models.get(device.device_type, device.device_type),
             serial_number=device.serial_number,
             sw_version=device.firmware_version,
-            via_device=via_device_id,
+            via_device_id=self.coordinator.parent_device_ids[via_device_identifier],
         )
 
     @property

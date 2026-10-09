@@ -143,7 +143,7 @@ class TadoXRoomTimerDuration(
             name=room_name,
             manufacturer="Tado",
             model="Tado X Room",
-            via_device=(DOMAIN, str(self.coordinator.home_id)),
+            via_device_id=self.coordinator.parent_device_ids[(DOMAIN, str(self.coordinator.home_id))],
         )
 
     @property

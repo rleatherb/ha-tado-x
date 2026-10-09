@@ -216,7 +216,7 @@ class TadoXDhwModeSelect(CoordinatorEntity[TadoXDataUpdateCoordinator], SelectEn
         if not data:
             return None
 
-        if data.dhw_state in ("SCHEDULE_ON", "SCHEDULE_OFF"):
+        if data.dhw_state in ("SCHEDULE_ON", "SCHEDULE_OFF", "AWAY_ON"):
             return DHW_SCHEDULE
         if data.dhw_state == "AWAY_OFF":
             return DHW_OFF
@@ -277,7 +277,7 @@ class TadoXRoomTerminationType(
             name=room_name,
             manufacturer="Tado",
             model="Tado X Room",
-            via_device=(DOMAIN, str(self.coordinator.home_id)),
+            via_device_id=self.coordinator.parent_device_ids[(DOMAIN, str(self.coordinator.home_id))],
         )
 
     @property

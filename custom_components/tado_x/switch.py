@@ -96,7 +96,7 @@ class TadoXChildLockSwitch(CoordinatorEntity[TadoXDataUpdateCoordinator], Switch
             "IB02": "Bridge X",
         }
 
-        via_device_id = (
+        via_device_identifier = (
             (DOMAIN, f"{self.coordinator.home_id}_{device.room_id}")
             if device.room_id
             else (DOMAIN, str(self.coordinator.home_id))
@@ -125,7 +125,7 @@ class TadoXChildLockSwitch(CoordinatorEntity[TadoXDataUpdateCoordinator], Switch
             model=device_type_models.get(device.device_type, device.device_type),
             serial_number=device.serial_number,
             sw_version=device.firmware_version,
-            via_device=via_device_id,
+            via_device_id=self.coordinator.parent_device_ids[via_device_identifier],
         )
 
     @property
@@ -196,7 +196,7 @@ class TadoXOpenWindowSwitch(CoordinatorEntity[TadoXDataUpdateCoordinator], Switc
             name=room_name,
             manufacturer="Tado",
             model="Tado X Room",
-            via_device=(DOMAIN, str(self.coordinator.home_id)),
+            via_device_id=self.coordinator.parent_device_ids[(DOMAIN, str(self.coordinator.home_id))],
         )
 
     @property

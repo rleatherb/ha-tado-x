@@ -180,6 +180,7 @@ class TadoXDataUpdateCoordinator(DataUpdateCoordinator[TadoXData]):
         )
         self.api = api
         self.api._get_room_control_defaults = self.get_room_control_defaults
+        self.parent_device_ids: dict[tuple[str, str], str] = {}
         self.home_id = home_id
         self.home_name = home_name
         self.api.home_id = home_id

@@ -88,7 +88,7 @@ class TadoXMobileDeviceTracker(
             manufacturer="Tado",
             model=model_str,
             sw_version=os_version if os_version else None,
-            via_device=(DOMAIN, str(self.coordinator.home_id)),
+            via_device_id=self.coordinator.parent_device_ids[(DOMAIN, str(self.coordinator.home_id))],
         )
 
     @property
