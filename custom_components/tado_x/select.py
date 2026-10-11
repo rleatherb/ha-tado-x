@@ -216,11 +216,8 @@ class TadoXDhwModeSelect(CoordinatorEntity[TadoXDataUpdateCoordinator], SelectEn
         if not data:
             return None
 
-        if data.dhw_state in ("SCHEDULE_ON", "SCHEDULE_OFF", "AWAY_ON"):
+        if data.dhw_state in ("SCHEDULE_ON", "SCHEDULE_OFF", "AWAY_ON", "AWAY_OFF"):
             return DHW_SCHEDULE
-        if data.dhw_state == "AWAY_OFF":
-            return DHW_OFF
-
         if data.dhw_state in DHW_OPTIONS:
             return data.dhw_state
         return None
