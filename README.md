@@ -1,4 +1,4 @@
-# Tado X Integration for Home Assistant
+# Tado X Integration for Home Assistant test
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://github.com/hacs/integration)
 [![GitHub Release](https://img.shields.io/github/v/release/exabird/ha-tado-x)](https://github.com/exabird/ha-tado-x/releases)
