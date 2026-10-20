@@ -165,6 +165,62 @@ SERVICE_SET_HOLIDAY_MODE_SCHEMA = vol.Schema(
 )
 
 
+def _validate_schedule_blocks(day_type: str, blocks: list[Any]) -> None:
+    """Validate a complete, contiguous 24-hour Tado day schedule."""
+    if not blocks:
+        raise HomeAssistantError("Schedule must contain at least one block")
+
+    def minutes(value: Any, field: str, index: int) -> int:
+        if not isinstance(value, str) or len(value) != 5 or value[2] != ":":
+            raise HomeAssistantError(
+                f"Block {index}: {field} must be HH:MM (00:00 to 24:00)"
+            )
+        hh, mm = value[:2], value[3:]
+        if not (hh.isdigit() and mm.isdigit()):
+            raise HomeAssistantError(f"Block {index}: invalid {field} time {value!r}")
+        hour, minute = int(hh), int(mm)
+        if hour > 24 or minute > 59 or (hour == 24 and minute != 0):
+            raise HomeAssistantError(f"Block {index}: invalid {field} time {value!r}")
+        return hour * 60 + minute
+
+    previous_end = 0
+    for index, block in enumerate(blocks, start=1):
+        if not isinstance(block, dict):
+            raise HomeAssistantError(f"Block {index}: must be a JSON object")
+        if block.get("dayType") != day_type:
+            raise HomeAssistantError(
+                f"Block {index}: dayType must match selected day type {day_type}"
+            )
+        start = minutes(block.get("start"), "start", index)
+        end = minutes(block.get("end"), "end", index)
+        if index == 1 and start != 0:
+            raise HomeAssistantError("Day schedule must start at 00:00")
+        if start != previous_end:
+            raise HomeAssistantError(
+                f"Block {index}: start must equal previous block end "
+                f"({previous_end // 60:02d}:{previous_end % 60:02d}); "
+                "gaps and overlaps are not allowed"
+            )
+        if end <= start:
+            raise HomeAssistantError(f"Block {index}: end must be after start")
+        setting = block.get("setting")
+        if not isinstance(setting, dict):
+            raise HomeAssistantError(f"Block {index}: setting must be an object")
+        if setting.get("power") not in ("ON", "OFF"):
+            raise HomeAssistantError(f"Block {index}: setting.power must be ON or OFF")
+        temperature = setting.get("temperature")
+        if setting["power"] == "ON":
+            if not isinstance(temperature, dict) or not isinstance(temperature.get("value"), (int, float)) or isinstance(temperature.get("value"), bool):
+                raise HomeAssistantError(
+                    f"Block {index}: ON requires setting.temperature.value as a number"
+                )
+        elif temperature is not None and not isinstance(temperature, dict):
+            raise HomeAssistantError(f"Block {index}: temperature must be an object or null")
+        previous_end = end
+    if previous_end != 1440:
+        raise HomeAssistantError("Day schedule must end at 24:00")
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Tado X from a config entry."""
     session = async_get_clientsession(hass)
@@ -573,6 +629,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             raise HomeAssistantError(f"Invalid schedule JSON: {err}") from err
         if not isinstance(day_schedule, list):
             raise HomeAssistantError("schedule must be a JSON list of blocks")
+        _validate_schedule_blocks(day_type, day_schedule)
         try:
             await service_coordinator.api.set_zone_schedule(room_id, day_type, day_schedule)
             room = service_coordinator.data.rooms.get(room_id)
