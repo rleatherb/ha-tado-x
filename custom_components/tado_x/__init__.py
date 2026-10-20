@@ -1,20 +1,21 @@
 """The Tado X integration."""
 from __future__ import annotations
 
+import json
 import logging
 from datetime import datetime
-from typing import Final
+from typing import Any, Final
 
 import voluptuous as vol
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import ATTR_DEVICE_ID, Platform
-from homeassistant.core import HomeAssistant, ServiceCall
+from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady, HomeAssistantError
-from homeassistant.helpers import config_validation as cv, device_registry as dr
+from homeassistant.helpers import config_validation as cv, device_registry as dr, entity_registry as er
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
-from .api import TadoXApi, TadoXApiError, TadoXAuthError
+from .api import TadoXApi, TadoXApiError, TadoXAuthError, summarize_day_report
 from .const import (
     CONF_ACCESS_TOKEN,
     CONF_API_CALLS_TODAY,
@@ -62,6 +63,28 @@ ATTR_TEMPERATURE: Final = "temperature"
 ATTR_DURATION: Final = "duration"
 ATTR_TERMINATION_TYPE: Final = "termination_type"
 
+SERVICE_GET_SCHEDULE: Final = "get_schedule"
+SERVICE_SET_SCHEDULE: Final = "set_schedule"
+SERVICE_GET_DAY_REPORT: Final = "get_day_report"
+ATTR_DAY_TYPE: Final = "day_type"
+ATTR_SCHEDULE: Final = "schedule"
+
+SERVICE_GET_HOLIDAY_MODE: Final = "get_holiday_mode"
+SERVICE_SET_HOLIDAY_MODE: Final = "set_holiday_mode"
+ATTR_ENABLED: Final = "enabled"
+
+DAY_TYPE_OPTIONS: Final = [
+    "MONDAY",
+    "TUESDAY",
+    "WEDNESDAY",
+    "THURSDAY",
+    "FRIDAY",
+    "SATURDAY",
+    "SUNDAY",
+    "MONDAY_TO_FRIDAY",
+    "MONDAY_TO_SUNDAY",
+]
+
 # Service schemas
 SERVICE_SET_TEMPERATURE_OFFSET_SCHEMA = vol.Schema(
     {
@@ -105,6 +128,39 @@ SERVICE_SET_CLIMATE_TIMER_SCHEMA = vol.Schema(
         vol.Optional(ATTR_TERMINATION_TYPE, default=TERMINATION_TIMER): vol.In(
             [TERMINATION_TIMER, TERMINATION_MANUAL, TERMINATION_NEXT_TIME_BLOCK]
         ),
+    }
+)
+
+
+SERVICE_GET_SCHEDULE_SCHEMA = vol.Schema(
+    {
+        vol.Required(ATTR_ENTITY_ID): cv.entity_id,
+    }
+)
+
+SERVICE_SET_SCHEDULE_SCHEMA = vol.Schema(
+    {
+        vol.Required(ATTR_ENTITY_ID): cv.entity_id,
+        vol.Required(ATTR_DAY_TYPE): vol.In(DAY_TYPE_OPTIONS),
+        vol.Required(ATTR_SCHEDULE): cv.string,
+    }
+)
+
+SERVICE_GET_DAY_REPORT_SCHEMA = vol.Schema(
+    {
+        vol.Required(ATTR_ENTITY_ID): cv.entity_id,
+        vol.Optional(ATTR_DATE): cv.string,
+    }
+)
+
+SERVICE_GET_HOLIDAY_MODE_SCHEMA = vol.Schema({vol.Optional(ATTR_HOME_ID): cv.string})
+
+SERVICE_SET_HOLIDAY_MODE_SCHEMA = vol.Schema(
+    {
+        vol.Required(ATTR_ENABLED): cv.boolean,
+        vol.Optional(ATTR_HOME_ID): cv.string,
+        vol.Optional(ATTR_START_DATE): cv.string,
+        vol.Optional(ATTR_END_DATE): cv.string,
     }
 )
 
@@ -477,6 +533,138 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             SERVICE_SET_CLIMATE_TIMER,
             async_set_climate_timer,
             schema=SERVICE_SET_CLIMATE_TIMER_SCHEMA,
+        )
+
+    def resolve_room(entity_id: str) -> tuple[TadoXDataUpdateCoordinator, int]:
+        """Resolve a room using its owning config entry, never a global coordinator."""
+        entity_entry = er.async_get(hass).async_get(entity_id)
+        if not entity_entry or entity_entry.platform != DOMAIN or entity_entry.domain != "climate" or not entity_entry.config_entry_id:
+            raise HomeAssistantError(f"{entity_id} is not a registered Tado X entity")
+        service_coordinator = get_coordinator_for_config_entry(entity_entry.config_entry_id)
+        unique_id = entity_entry.unique_id or ""
+        parts = unique_id.split("_")
+        if len(parts) not in (2, 3) or (len(parts) == 3 and parts[2] != "climate"):
+            raise HomeAssistantError(f"Invalid Tado X room entity: {entity_id}")
+        try:
+            room_id = int(parts[1])
+        except ValueError as err:
+            raise HomeAssistantError(f"Invalid room ID for {entity_id}") from err
+        if str(parts[0]) != str(service_coordinator.home_id):
+            raise HomeAssistantError(f"Home ID mismatch for {entity_id}")
+        if room_id not in service_coordinator.data.rooms:
+            raise HomeAssistantError(f"Room {room_id} is not part of home {service_coordinator.home_id}")
+        return service_coordinator, room_id
+
+    async def async_get_schedule(call: ServiceCall) -> dict[str, Any]:
+        """Return the current smart schedule for a room."""
+        service_coordinator, room_id = resolve_room(call.data[ATTR_ENTITY_ID])
+        try:
+            return await service_coordinator.api.get_zone_schedule(room_id)
+        except TadoXApiError as err:
+            raise HomeAssistantError(f"Failed to get schedule: {err}") from err
+
+    async def async_set_schedule(call: ServiceCall) -> None:
+        """Set the smart schedule blocks for a room."""
+        service_coordinator, room_id = resolve_room(call.data[ATTR_ENTITY_ID])
+        day_type = call.data[ATTR_DAY_TYPE]
+        try:
+            day_schedule = json.loads(call.data[ATTR_SCHEDULE])
+        except json.JSONDecodeError as err:
+            raise HomeAssistantError(f"Invalid schedule JSON: {err}") from err
+        if not isinstance(day_schedule, list):
+            raise HomeAssistantError("schedule must be a JSON list of blocks")
+        try:
+            await service_coordinator.api.set_zone_schedule(room_id, day_type, day_schedule)
+            room = service_coordinator.data.rooms.get(room_id)
+            if room:
+                room.schedule = [
+                    block
+                    for block in room.schedule
+                    if block.get("dayType") != day_type
+                ] + [{**block, "dayType": day_type} for block in day_schedule]
+            await service_coordinator.async_request_refresh()
+            _LOGGER.info("Schedule updated for room %s (%s)", room_id, day_type)
+        except TadoXApiError as err:
+            raise HomeAssistantError(f"Failed to set schedule: {err}") from err
+
+    async def async_get_day_report(call: ServiceCall) -> dict[str, Any]:
+        """Return the historical day report for a room."""
+        service_coordinator, room_id = resolve_room(call.data[ATTR_ENTITY_ID])
+        report_date = call.data.get(ATTR_DATE) or datetime.now().date().isoformat()
+        try:
+            report = await service_coordinator.api.get_zone_day_report(room_id, report_date)
+        except TadoXApiError as err:
+            raise HomeAssistantError(f"Failed to get day report: {err}") from err
+        return {
+            "date": report_date,
+            "report": report,
+            "summary": summarize_day_report(report),
+        }
+
+    async def async_get_holiday_mode(call: ServiceCall) -> dict[str, Any]:
+        """Return the current holiday mode settings."""
+        service_coordinator = get_home_coordinator(call)
+        try:
+            return await service_coordinator.api.get_holiday_mode()
+        except TadoXApiError as err:
+            raise HomeAssistantError(f"Failed to get holiday mode: {err}") from err
+
+    async def async_set_holiday_mode(call: ServiceCall) -> None:
+        """Enable/disable holiday mode and optionally set its date range."""
+        service_coordinator = get_home_coordinator(call)
+        try:
+            await service_coordinator.api.set_holiday_mode(
+                enabled=call.data[ATTR_ENABLED],
+                start_date=call.data.get(ATTR_START_DATE),
+                end_date=call.data.get(ATTR_END_DATE),
+            )
+            await service_coordinator.async_request_refresh()
+            _LOGGER.info("Holiday mode set to %s", call.data[ATTR_ENABLED])
+        except TadoXApiError as err:
+            raise HomeAssistantError(f"Failed to set holiday mode: {err}") from err
+
+    # Register schedule / historic data services (only once per integration)
+    if not hass.services.has_service(DOMAIN, SERVICE_GET_SCHEDULE):
+        hass.services.async_register(
+            DOMAIN,
+            SERVICE_GET_SCHEDULE,
+            async_get_schedule,
+            schema=SERVICE_GET_SCHEDULE_SCHEMA,
+            supports_response=SupportsResponse.ONLY,
+        )
+
+    if not hass.services.has_service(DOMAIN, SERVICE_SET_SCHEDULE):
+        hass.services.async_register(
+            DOMAIN,
+            SERVICE_SET_SCHEDULE,
+            async_set_schedule,
+            schema=SERVICE_SET_SCHEDULE_SCHEMA,
+        )
+
+    if not hass.services.has_service(DOMAIN, SERVICE_GET_DAY_REPORT):
+        hass.services.async_register(
+            DOMAIN,
+            SERVICE_GET_DAY_REPORT,
+            async_get_day_report,
+            schema=SERVICE_GET_DAY_REPORT_SCHEMA,
+            supports_response=SupportsResponse.ONLY,
+        )
+
+    if not hass.services.has_service(DOMAIN, SERVICE_GET_HOLIDAY_MODE):
+        hass.services.async_register(
+            DOMAIN,
+            SERVICE_GET_HOLIDAY_MODE,
+            async_get_holiday_mode,
+            schema=SERVICE_GET_HOLIDAY_MODE_SCHEMA,
+            supports_response=SupportsResponse.ONLY,
+        )
+
+    if not hass.services.has_service(DOMAIN, SERVICE_SET_HOLIDAY_MODE):
+        hass.services.async_register(
+            DOMAIN,
+            SERVICE_SET_HOLIDAY_MODE,
+            async_set_holiday_mode,
+            schema=SERVICE_SET_HOLIDAY_MODE_SCHEMA,
         )
 
     # Register parent devices before entities so links use actual registry IDs.

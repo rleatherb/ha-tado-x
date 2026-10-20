@@ -234,6 +234,9 @@ class TadoXClimate(CoordinatorEntity[TadoXDataUpdateCoordinator], ClimateEntity)
                         max(0, (ends_at - dt_util.utcnow()).total_seconds()) / 60
                     )
 
+        if room.schedule:
+            attrs["schedule"] = room.schedule
+
         return attrs
 
     async def async_set_hvac_mode(self, hvac_mode: HVACMode) -> None:
