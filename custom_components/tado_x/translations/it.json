@@ -231,6 +231,15 @@
           "comfy": "Confortevole",
           "warm": "Caldo"
         }
+      },
+      "next_schedule_change": {
+        "name": "Prossimo cambio di programmazione"
+      },
+      "next_schedule_temperature": {
+        "name": "Prossima temperatura programmata"
+      },
+      "next_schedule_power": {
+        "name": "Prossimo stato del riscaldamento"
       }
     },
     "binary_sensor": {

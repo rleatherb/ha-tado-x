@@ -231,6 +231,15 @@
           "comfy": "Angenehm",
           "warm": "Warm"
         }
+      },
+      "next_schedule_change": {
+        "name": "Nächste Zeitplanänderung"
+      },
+      "next_schedule_temperature": {
+        "name": "Nächste Solltemperatur"
+      },
+      "next_schedule_power": {
+        "name": "Nächster Heizstatus"
       }
     },
     "binary_sensor": {

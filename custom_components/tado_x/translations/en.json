@@ -235,6 +235,15 @@
           "comfy": "Comfortable",
           "warm": "Warm"
         }
+      },
+      "next_schedule_change": {
+        "name": "Next Schedule Change"
+      },
+      "next_schedule_temperature": {
+        "name": "Next Schedule Temperature"
+      },
+      "next_schedule_power": {
+        "name": "Next Schedule Power"
       }
     },
     "binary_sensor": {
