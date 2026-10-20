@@ -260,6 +260,9 @@
           "comfy": "Comfortable",
           "warm": "Warm"
         }
+      },
+      "home_id": {
+        "name": "Tado Home ID"
       }
     },
     "binary_sensor": {

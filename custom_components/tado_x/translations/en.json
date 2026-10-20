@@ -244,6 +244,9 @@
       },
       "next_schedule_power": {
         "name": "Next Schedule Power"
+      },
+      "home_id": {
+        "name": "Tado Home ID"
       }
     },
     "binary_sensor": {

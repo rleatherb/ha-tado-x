@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
+from homeassistant.helpers.entity import EntityCategory
 from homeassistant.components.sensor import (
     SensorDeviceClass,
     SensorEntity,
@@ -252,6 +253,14 @@ def _get_dhw_next_schedule_change(data: TadoXData) -> datetime | None:
 
 
 HOME_SENSORS: tuple[TadoXHomeSensorEntityDescription, ...] = (
+    TadoXHomeSensorEntityDescription(
+        key="home_id",
+        name="Tado Home ID",
+        translation_key="home_id",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        icon="mdi:home-account",
+        value_fn=lambda data: str(data.home_id),
+    ),
     TadoXHomeSensorEntityDescription(
         key="api_calls_today",
         translation_key="api_calls_today",
