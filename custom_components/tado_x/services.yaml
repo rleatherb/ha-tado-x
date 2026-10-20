@@ -153,19 +153,28 @@ set_climate_timer:
 get_schedule:
   name: Get schedule
   description: Read the current smart heating schedule for a room. Returns the schedule blocks as a response.
-  target:
-    entity:
-      integration: tado_x
-      domain: climate
+  fields:
+    entity_id:
+      name: Climate entity
+      description: The Tado X room to query or control
+      required: true
+      selector:
+        entity:
+          integration: tado_x
+          domain: climate
 
 set_schedule:
   name: Set schedule
   description: Modify the smart heating schedule for a room. Replaces the blocks for the given day type.
-  target:
-    entity:
-      integration: tado_x
-      domain: climate
   fields:
+    entity_id:
+      name: Climate entity
+      description: The Tado X room to query or control
+      required: true
+      selector:
+        entity:
+          integration: tado_x
+          domain: climate
     day_type:
       name: Day type
       description: Which day(s) this schedule applies to.
@@ -208,11 +217,15 @@ set_schedule:
 get_day_report:
   name: Get day report
   description: Read historical temperature, humidity and heating data for a room and date. Returns the report and a summary as a response. Today's data works on all tiers; past days require an Auto-Assist (Premium) subscription.
-  target:
-    entity:
-      integration: tado_x
-      domain: climate
   fields:
+    entity_id:
+      name: Climate entity
+      description: The Tado X room to query or control
+      required: true
+      selector:
+        entity:
+          integration: tado_x
+          domain: climate
     date:
       name: Date
       description: Date to fetch (YYYY-MM-DD). Defaults to today.
