@@ -97,19 +97,26 @@ class TadoXMobileDeviceTracker(
         return SourceType.GPS
 
     @property
-    def location_name(self) -> str | None:
-        """Return the location name of the device."""
+    def in_zones(self) -> list[str] | None:
+        """Return Home Assistant zone IDs without deprecated location_name.
+
+        Tado X mobile geofencing reports HOME/AWAY rather than GPS
+        coordinates.  None represents unknown/not tracking; an empty list
+        represents a known location outside the Home zone.
+        """
         mobile = self._mobile_device
-        if not mobile:
+        if mobile is None or not mobile.geofencing_enabled:
             return None
 
-        if not mobile.geofencing_enabled:
-            return "not_tracking"
-
-        if mobile.location is None:
-            return "unknown"
-
-        return mobile.location.lower()
+        location = mobile.location
+        if location is None:
+            return None
+        if location.upper() == "HOME":
+            return ["zone.home"]
+        if location.upper() == "AWAY":
+            return []
+        # Do not fabricate a zone entity ID from an unknown API value.
+        return None
 
     @property
     def extra_state_attributes(self) -> dict:
@@ -122,6 +129,7 @@ class TadoXMobileDeviceTracker(
         return {
             "geofencing_enabled": mobile.geofencing_enabled,
             "at_home": mobile.at_home,
+            "tado_location": mobile.location,
             "platform": metadata.get("platform"),
             "os_version": metadata.get("osVersion"),
             "model": metadata.get("model"),

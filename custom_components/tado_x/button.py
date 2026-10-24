@@ -8,7 +8,9 @@ from collections.abc import Awaitable, Callable
 from homeassistant.components.button import ButtonEntity, ButtonEntityDescription
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.device_registry import DeviceInfo
+from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
@@ -171,6 +173,9 @@ class TadoXScheduleRefreshButton(CoordinatorEntity[TadoXDataUpdateCoordinator], 
 
     _attr_has_entity_name = True
     _attr_translation_key = "refresh_schedule"
+    _attr_name = "Refresh Schedule"
+    _attr_entity_category = EntityCategory.CONFIG
+    _attr_entity_registry_enabled_default = True
 
     def __init__(
         self,
@@ -193,13 +198,19 @@ class TadoXScheduleRefreshButton(CoordinatorEntity[TadoXDataUpdateCoordinator], 
             name=room_name,
             manufacturer="Tado",
             model="Tado X Room",
-            via_device_id=self.coordinator.parent_device_ids.get((DOMAIN, f"{self.coordinator.home_id}_{self._room_id}")),
         )
 
     async def async_press(self) -> None:
-        """Fetch the room's schedule and expose it as a climate attribute."""
-        schedule = await self.coordinator.api.get_zone_schedule(self._room_id)
-        room = self.coordinator.data.rooms.get(self._room_id)
-        if room:
-            room.schedule = schedule.get("schedule", [])
-            self.coordinator.async_set_updated_data(self.coordinator.data)
+        """Read the Home schedule and report profile-comparison limitations."""
+        manager = self.coordinator.schedule_profile_manager
+        async with manager._lock(self._room_id):
+            live = await self.coordinator.api.get_zone_schedule(self._room_id)
+            if not isinstance(live, dict) or not isinstance(live.get("schedule"), list):
+                raise HomeAssistantError("Tado did not return a valid Home schedule")
+            try:
+                await manager.check(self._room_id, live)
+            except Exception as err:
+                _LOGGER.warning("Schedule refreshed for home=%s room=%s; full profile comparison unavailable: %s", self.coordinator.home_id, self._room_id, err)
+            # Poll the current room state immediately so next-change sensors
+            # and climate attributes reflect Tado's latest configuration.
+            await self.coordinator.async_request_refresh()

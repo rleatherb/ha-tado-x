@@ -51,7 +51,9 @@
           "enable_air_comfort": "Enable air comfort sensors",
           "enable_running_times": "Enable heating time sensors",
           "enable_flow_temp": "Enable flow temperature control",
-          "enable_hot_water": "Enable hot water sensor"
+          "enable_hot_water": "Enable hot water sensor",
+          "enable_schedule_polling": "Automatically check for schedule changes",
+          "schedule_poll_interval": "Schedule check interval (seconds)"
         },
         "data_description": {
           "has_auto_assist": "Enable this if you have an Auto-Assist subscription. This will automatically adjust the update interval.",
@@ -61,7 +63,9 @@
           "enable_air_comfort": "Enables air freshness and comfort level sensors per room. Uses 1 API call per update.",
           "enable_running_times": "Enables heating time today sensors per room. Uses 1 API call per update.",
           "enable_flow_temp": "Enables max flow temperature slider and auto-adaptation switch (requires OpenTherm boiler). Uses 1 API call per update.",
-          "enable_hot_water": "Enables domestic hot water state sensor. Uses 1 API call per update."
+          "enable_hot_water": "Enables domestic hot water state sensor. Uses 1 API call per update.",
+          "enable_schedule_polling": "Checks Home and Away schedules. Uses 2 API calls per room per update. Enabled by default with Auto-Assist; disabled by default without it.",
+          "schedule_poll_interval": "How often to check schedules when enabled. Minimum: 900 seconds (15 minutes); default: 3600 seconds (1 hour); maximum: 86400 seconds (24 hours)."
         }
       }
     }
@@ -69,7 +73,7 @@
   "services": {
     "set_temperature_offset": {
       "name": "Set temperature offset",
-      "description": "Adjust the temperature offset for a Tado X device (valve or sensor) to calibrate temperature readings.",
+      "description": "Adjust the temperature offset for a Tado X device (valve or sensor). This calibrates the device's temperature reading.",
       "fields": {
         "device_id": {
           "name": "Device",
@@ -77,7 +81,7 @@
         },
         "offset": {
           "name": "Temperature offset",
-          "description": "Temperature offset in °C. Positive values increase the reading, negative values decrease it."
+          "description": "Temperature offset in °C. Positive values make the device read higher, negative values make it read lower."
         }
       }
     },
@@ -85,6 +89,10 @@
       "name": "Add meter reading",
       "description": "Upload a meter reading to Tado Energy IQ",
       "fields": {
+        "device_id": {
+          "name": "Tado X Home device",
+          "description": "Optional when only one Tado X home is configured; select the Tado X Home device when multiple homes are configured (not a room or thermostat)."
+        },
         "reading": {
           "name": "Reading",
           "description": "Meter reading value (integer)"
@@ -99,27 +107,31 @@
       "name": "Set energy tariff",
       "description": "Set an energy tariff in Tado Energy IQ for cost calculations",
       "fields": {
+        "device_id": {
+          "name": "Tado X Home device",
+          "description": "Optional when only one Tado X home is configured; select the Tado X Home device when multiple homes are configured (not a room or thermostat)."
+        },
         "tariff": {
           "name": "Tariff",
           "description": "Price per unit (e.g., 0.85 for €0.85/m³)"
         },
         "unit": {
           "name": "Unit",
-          "description": "Energy unit type (m3 or kWh)"
+          "description": "Energy unit type"
         },
         "start_date": {
           "name": "Start date",
-          "description": "Start date for the tariff (YYYY-MM-DD format)"
+          "description": "Start date for the tariff (YYYY-MM-DD format, defaults to today)"
         },
         "end_date": {
           "name": "End date",
-          "description": "End date for the tariff (YYYY-MM-DD format)"
+          "description": "End date for the tariff (YYYY-MM-DD format, leave empty for ongoing tariff)"
         }
       }
     },
     "set_climate_timer": {
       "name": "Set climate timer",
-      "description": "Set a room temperature for a specific duration",
+      "description": "Set a room temperature override. Timer (default) requires temperature and duration; Manual requires temperature only; Next time block requires temperature but not duration.",
       "fields": {
         "entity_id": {
           "name": "Climate entity",
@@ -127,11 +139,180 @@
         },
         "temperature": {
           "name": "Temperature",
-          "description": "Target temperature in °C"
+          "description": "Required for Timer, Manual and Next time block."
         },
         "duration": {
           "name": "Duration",
-          "description": "Duration in minutes (1-1440)"
+          "description": "Required only for Timer (1-1440 minutes); ignored for Manual and Next time block."
+        },
+        "termination_type": {
+          "name": "Termination type",
+          "description": "Timer (default if omitted) requires temperature and duration; Manual requires temperature only; Next time block requires temperature only."
+        }
+      }
+    },
+    "get_schedule": {
+      "name": "Get schedule",
+      "description": "Read the current smart heating schedule for a room. Returns the schedule blocks as a response.",
+      "fields": {
+        "entity_id": {
+          "name": "Climate entity",
+          "description": "The Tado X room to query or control"
+        }
+      }
+    },
+    "get_away_schedule": {
+      "name": "Get away schedule",
+      "description": "Read the stored per-room Away mode, temperature and preheating configuration. Returns the settings as a response without changing them.",
+      "fields": {
+        "entity_id": {
+          "name": "Climate entity",
+          "description": "The Tado X room whose Away settings should be returned"
+        }
+      }
+    },
+    "set_away_schedule": {
+      "name": "Set away schedule",
+      "description": "Update a room's Tado X Away mode, temperature and optional preheating level. Existing saved schedule profiles are not modified. When enabling Away from OFF, specify a temperature.",
+      "fields": {
+        "entity_id": {
+          "name": "Climate entity",
+          "description": "The Tado X room whose Away configuration should be updated"
+        },
+        "mode": {
+          "name": "Away mode",
+          "description": "Enable or disable Away temperature control"
+        },
+        "away_temperature": {
+          "name": "Away temperature",
+          "description": "Temperature in °C when Away mode is ON. If omitted, the current Away temperature is retained when available. Ignored for OFF."
+        },
+        "preheating_level": {
+          "name": "Preheating level",
+          "description": "Optional Tado X preheating setting; if omitted, the current setting is preserved."
+        }
+      }
+    },
+    "set_schedule": {
+      "name": "Set schedule",
+      "description": "Modify the smart heating schedule for a room. Replaces the blocks for the given day type.",
+      "fields": {
+        "entity_id": {
+          "name": "Climate entity",
+          "description": "The Tado X room to query or control"
+        },
+        "day_type": {
+          "name": "Day type",
+          "description": "Which day(s) this schedule applies to."
+        },
+        "schedule": {
+          "name": "Schedule blocks",
+          "description": "JSON array of schedule blocks. Each block: {\"dayType\": \"MONDAY\", \"start\": \"07:00\", \"end\": \"09:00\", \"setting\": {\"power\": \"ON\", \"temperature\": {\"value\": 21.0}}}. \"power\" is ON or OFF; \"temperature\" may be null when power is OFF."
+        }
+      }
+    },
+    "get_day_report": {
+      "name": "Get day report",
+      "description": "Read historical temperature, humidity and heating data for a room and date. Returns the report and a summary as a response. Today's data works on all tiers; past days require an Auto-Assist (Premium) subscription.",
+      "fields": {
+        "entity_id": {
+          "name": "Climate entity",
+          "description": "The Tado X room to query or control"
+        },
+        "date": {
+          "name": "Date",
+          "description": "Date to fetch (YYYY-MM-DD). Defaults to today."
+        }
+      }
+    },
+    "get_holiday_mode": {
+      "name": "Get holiday mode",
+      "description": "Read the home's holiday mode settings (enabled, start/end dates and room settings). Returns the settings as a response. Requires an Auto-Assist (Premium) subscription.",
+      "fields": {
+        "device_id": {
+          "name": "Tado X Home device",
+          "description": "Optional when only one Tado X home is configured; select the Tado X Home device when multiple homes are configured (not a room or thermostat)."
+        }
+      }
+    },
+    "set_holiday_mode": {
+      "name": "Set holiday mode",
+      "description": "Enable or disable holiday mode and optionally set its start/end date. Requires an Auto-Assist (Premium) subscription. Dates are ISO-8601 date-time strings.",
+      "fields": {
+        "device_id": {
+          "name": "Tado X Home device",
+          "description": "Optional when only one Tado X home is configured; select the Tado X Home device when multiple homes are configured (not a room or thermostat)."
+        },
+        "enabled": {
+          "name": "Enabled",
+          "description": "Turn holiday mode on (true) or off (false)."
+        },
+        "start_date": {
+          "name": "Start date",
+          "description": "ISO-8601 start date-time (e.g. 2026-12-20T08:00:00Z). Optional."
+        },
+        "end_date": {
+          "name": "End date",
+          "description": "ISO-8601 end date-time (e.g. 2027-01-05T20:00:00Z). Optional."
+        }
+      }
+    },
+    "save_schedule_profile": {
+      "name": "Save schedule profile",
+      "description": "Save the current Home and Away schedule to a room profile, or to a home-wide template using a name such as Eco default.",
+      "fields": {
+        "entity_id": {
+          "name": "Climate entity"
+        },
+        "profile": {
+          "name": "Profile name"
+        }
+      }
+    },
+    "restore_schedule_profile": {
+      "name": "Restore schedule profile",
+      "description": "Restore a room profile (with home default fallback), or explicitly restore a home-wide template using a name such as Eco default.",
+      "fields": {
+        "entity_id": {
+          "name": "Climate entity"
+        },
+        "profile": {
+          "name": "Profile name"
+        }
+      }
+    },
+    "list_schedule_profiles": {
+      "name": "List schedule profiles",
+      "description": "List configured and unconfigured schedule profiles for a room.",
+      "fields": {
+        "entity_id": {
+          "name": "Climate entity"
+        }
+      }
+    },
+    "delete_schedule_profile": {
+      "name": "Delete schedule profile",
+      "description": "Delete a user-defined schedule profile. Default profile names cannot be deleted.",
+      "fields": {
+        "entity_id": {
+          "name": "Climate entity"
+        },
+        "profile": {
+          "name": "Profile name"
+        }
+      }
+    },
+    "reset_schedule_default": {
+      "name": "Reset home schedule default",
+      "description": "Remove a customized home-wide template, reverting to the factory schedule. Does not change any room's active schedule or saved room profiles.",
+      "fields": {
+        "device_id": {
+          "name": "Tado X Home device",
+          "description": "Optional when only one Tado X home is configured; select the Tado X Home device when multiple homes are configured."
+        },
+        "profile": {
+          "name": "Default profile name",
+          "description": "Normal, Alternative, Eco, or Not in use (optional default suffix)."
         }
       }
     }
@@ -196,7 +377,10 @@
         "name": "API quota limit"
       },
       "api_usage_percentage": {
-        "name": "API usage"
+        "name": "API current usage"
+      },
+      "api_estimated_daily_usage": {
+        "name": "API estimated daily usage"
       },
       "api_reset_time": {
         "name": "API reset time"

@@ -39,6 +39,8 @@ from .const import (
     TERMINATION_TIMER,
 )
 from .coordinator import TadoXDataUpdateCoordinator
+from .schedule_profiles import ProfileManager, DEFAULT_PROFILES, base_default_name
+from .const import CONF_ENABLE_SCHEDULE_POLLING, CONF_SCHEDULE_POLL_INTERVAL, DEFAULT_SCHEDULE_POLL_INTERVAL
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -47,7 +49,7 @@ SERVICE_SET_TEMPERATURE_OFFSET: Final = "set_temperature_offset"
 ATTR_OFFSET: Final = "offset"
 
 SERVICE_ADD_METER_READING: Final = "add_meter_reading"
-ATTR_HOME_ID: Final = "home_id"
+ATTR_HOME_DEVICE_ID: Final = "device_id"
 ATTR_READING: Final = "reading"
 ATTR_DATE: Final = "date"
 
@@ -64,6 +66,13 @@ ATTR_DURATION: Final = "duration"
 ATTR_TERMINATION_TYPE: Final = "termination_type"
 
 SERVICE_GET_SCHEDULE: Final = "get_schedule"
+SERVICE_GET_AWAY_SCHEDULE: Final = "get_away_schedule"
+SERVICE_SET_AWAY_SCHEDULE: Final = "set_away_schedule"
+SERVICE_SAVE_PROFILE = "save_schedule_profile"
+SERVICE_RESTORE_PROFILE = "restore_schedule_profile"
+SERVICE_LIST_PROFILES = "list_schedule_profiles"
+SERVICE_DELETE_PROFILE = "delete_schedule_profile"
+SERVICE_RESET_DEFAULT = "reset_schedule_default"
 SERVICE_SET_SCHEDULE: Final = "set_schedule"
 SERVICE_GET_DAY_REPORT: Final = "get_day_report"
 ATTR_DAY_TYPE: Final = "day_type"
@@ -100,7 +109,7 @@ SERVICE_ADD_METER_READING_SCHEMA = vol.Schema(
     {
         vol.Required(ATTR_READING): vol.All(vol.Coerce(int), vol.Range(min=0)),
         vol.Optional(ATTR_DATE): cv.string,
-        vol.Optional(ATTR_HOME_ID): cv.string,
+        vol.Optional(ATTR_HOME_DEVICE_ID): cv.string,
     }
 )
 
@@ -110,18 +119,18 @@ SERVICE_SET_EIQ_TARIFF_SCHEMA = vol.Schema(
         vol.Required(ATTR_UNIT): vol.In(["m3", "kWh"]),
         vol.Optional(ATTR_START_DATE): cv.string,
         vol.Optional(ATTR_END_DATE): cv.string,
-        vol.Optional(ATTR_HOME_ID): cv.string,
+        vol.Optional(ATTR_HOME_DEVICE_ID): cv.string,
     }
 )
 
 SERVICE_SET_CLIMATE_TIMER_SCHEMA = vol.Schema(
     {
         vol.Required(ATTR_ENTITY_ID): cv.entity_id,
-        vol.Required(ATTR_TEMPERATURE): vol.All(
+        vol.Optional(ATTR_TEMPERATURE): vol.All(
             vol.Coerce(float),
             vol.Range(min=5.0, max=30.0),
         ),
-        vol.Required(ATTR_DURATION): vol.All(
+        vol.Optional(ATTR_DURATION): vol.All(
             vol.Coerce(int),
             vol.Range(min=1, max=1440),  # 1 minute to 24 hours
         ),
@@ -131,6 +140,10 @@ SERVICE_SET_CLIMATE_TIMER_SCHEMA = vol.Schema(
     }
 )
 
+
+RESET_DEFAULT_SCHEMA = vol.Schema({vol.Optional(ATTR_HOME_DEVICE_ID): cv.string, vol.Required("profile"): vol.In(DEFAULT_PROFILES)})
+
+PROFILE_SCHEMA = vol.Schema({vol.Required(ATTR_ENTITY_ID): cv.entity_id, vol.Required("profile"): vol.All(cv.string, vol.Length(min=1, max=80))})
 
 SERVICE_GET_SCHEDULE_SCHEMA = vol.Schema(
     {
@@ -146,6 +159,15 @@ SERVICE_SET_SCHEDULE_SCHEMA = vol.Schema(
     }
 )
 
+SERVICE_SET_AWAY_SCHEDULE_SCHEMA = vol.Schema(
+    {
+        vol.Required(ATTR_ENTITY_ID): cv.entity_id,
+        vol.Required("mode"): vol.In(["ON", "OFF"]),
+        vol.Optional("away_temperature"): vol.All(vol.Coerce(float), vol.Range(min=0.1, max=49.9)),
+        vol.Optional("preheating_level"): vol.In(["OFF", "ECO", "BALANCE", "COMFORT"]),
+    }
+)
+
 SERVICE_GET_DAY_REPORT_SCHEMA = vol.Schema(
     {
         vol.Required(ATTR_ENTITY_ID): cv.entity_id,
@@ -153,12 +175,12 @@ SERVICE_GET_DAY_REPORT_SCHEMA = vol.Schema(
     }
 )
 
-SERVICE_GET_HOLIDAY_MODE_SCHEMA = vol.Schema({vol.Optional(ATTR_HOME_ID): cv.string})
+SERVICE_GET_HOLIDAY_MODE_SCHEMA = vol.Schema({vol.Optional(ATTR_HOME_DEVICE_ID): cv.string})
 
 SERVICE_SET_HOLIDAY_MODE_SCHEMA = vol.Schema(
     {
         vol.Required(ATTR_ENABLED): cv.boolean,
-        vol.Optional(ATTR_HOME_ID): cv.string,
+        vol.Optional(ATTR_HOME_DEVICE_ID): cv.string,
         vol.Optional(ATTR_START_DATE): cv.string,
         vol.Optional(ATTR_END_DATE): cv.string,
     }
@@ -241,6 +263,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         except (ValueError, TypeError):
             pass
 
+    # Learned reset observations are independent of the obsolete fixed-clock
+    # api_reset_time persisted by older versions.
+    last_reset = None
+    if entry.data.get("api_last_observed_reset"):
+        try:
+            last_reset = datetime.fromisoformat(entry.data["api_last_observed_reset"])
+        except (ValueError, TypeError):
+            pass
+
     # Create a mutable container for the API reference (needed for callback closure)
     api_container: dict[str, TadoXApi] = {}
 
@@ -266,7 +297,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         refresh_token=entry.data.get(CONF_REFRESH_TOKEN),
         token_expiry=token_expiry,
         api_calls_today=entry.data.get(CONF_API_CALLS_TODAY, 0),
-        api_reset_time=api_reset_time,
+        api_reset_time=None,  # Do not migrate the old hard-coded reset time.
+        api_last_reset=last_reset,
+        api_previous_used=entry.data.get("api_previous_server_used"),
+        api_previous_quota=entry.data.get("api_previous_server_quota"),
         has_auto_assist=entry.data.get(CONF_HAS_AUTO_ASSIST, False),
         on_token_refresh=save_tokens,
     )
@@ -288,7 +322,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 CONF_REFRESH_TOKEN: api.refresh_token,
                 CONF_TOKEN_EXPIRY: api.token_expiry.isoformat() if api.token_expiry else None,
                 CONF_API_CALLS_TODAY: api.api_calls_today,
-                CONF_API_RESET_TIME: api.api_reset_time.isoformat(),
+                CONF_API_RESET_TIME: api.api_reset_time.isoformat() if api.api_reset_time else None,
+                "api_last_observed_reset": api.api_last_reset.isoformat() if api.api_last_reset else None,
+                "api_previous_server_used": api.api_previous_used,
+                "api_previous_server_quota": api.api_previous_quota,
                 CONF_HAS_AUTO_ASSIST: api.has_auto_assist,
             },
         )
@@ -304,7 +341,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             data={
                 **entry.data,
                 CONF_API_CALLS_TODAY: api.api_calls_today,
-                CONF_API_RESET_TIME: api.api_reset_time.isoformat(),
+                CONF_API_RESET_TIME: api.api_reset_time.isoformat() if api.api_reset_time else None,
+                "api_last_observed_reset": api.api_last_reset.isoformat() if api.api_last_reset else None,
+                "api_previous_server_used": api.api_previous_used,
+                "api_previous_server_quota": api.api_previous_quota,
             },
         )
 
@@ -347,6 +387,20 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data.setdefault(DOMAIN, {})
     hass.data[DOMAIN][entry.entry_id] = coordinator
 
+    profile_manager = ProfileManager(hass, coordinator, _validate_schedule_blocks)
+    await profile_manager.load()
+    # Capture actual Tado Home and Away settings before the selectors appear.
+    # Only rooms without a persisted Normal profile are read and saved.
+    await profile_manager.initialize_normal_profiles()
+    coordinator.schedule_profile_manager = profile_manager
+    profile_manager.configure_polling(
+        entry.data.get(CONF_ENABLE_SCHEDULE_POLLING, has_auto_assist),
+        entry.data.get(CONF_SCHEDULE_POLL_INTERVAL, DEFAULT_SCHEDULE_POLL_INTERVAL),
+    )
+    # Only perform automatic startup comparison when periodic checks are enabled.
+    if profile_manager.poll_enabled:
+        entry.async_create_background_task(hass, profile_manager.poll(), "Tado X initial schedule profile comparison")
+
     # Register services
     #
     # Services are global to the integration domain, while coordinators are
@@ -379,16 +433,33 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             raise HomeAssistantError("No Tado X homes are configured")
         if len(coordinators) > 1:
             raise HomeAssistantError(
-                "Multiple Tado X homes are configured. A home_id must be specified."
+                "Multiple Tado X homes are configured. Select a Tado X Home device."
             )
         return next(iter(coordinators.values()))
 
     def get_home_coordinator(call: ServiceCall) -> TadoXDataUpdateCoordinator:
-        """Resolve coordinator for a home-level service."""
-        requested_home_id = call.data.get(ATTR_HOME_ID)
-        if requested_home_id is not None:
-            return get_coordinator_for_home(requested_home_id)
-        return get_default_coordinator()
+        """Resolve an optional Tado X Home device for a home-level action."""
+        selected_device_id = call.data.get(ATTR_HOME_DEVICE_ID)
+        if not selected_device_id:
+            return get_default_coordinator()
+
+        device = dr.async_get(hass).async_get(selected_device_id)
+        if device is None:
+            raise HomeAssistantError("Selected Tado X Home device was not found")
+
+        # The Home device has the (DOMAIN, home_id) identifier. Room
+        # devices have a different identifier and cannot be selected.
+        matches = [
+            coordinator
+            for entry_id, coordinator in hass.data.get(DOMAIN, {}).items()
+            if entry_id in device.config_entries
+            and (DOMAIN, str(coordinator.home_id)) in device.identifiers
+        ]
+        if len(matches) != 1:
+            raise HomeAssistantError(
+                "Select the Tado X Home device (not a room, thermostat or valve device)"
+            )
+        return matches[0]
 
     async def async_set_temperature_offset(call: ServiceCall) -> None:
         """Handle set_temperature_offset service call."""
@@ -511,9 +582,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         from homeassistant.helpers import entity_registry as er
 
         entity_id = call.data[ATTR_ENTITY_ID]
-        temperature = call.data[ATTR_TEMPERATURE]
-        duration_minutes = call.data[ATTR_DURATION]
         termination_type = call.data.get(ATTR_TERMINATION_TYPE, TERMINATION_TIMER)
+        temperature = call.data.get(ATTR_TEMPERATURE)
+        duration_minutes = call.data.get(ATTR_DURATION)
+
+        if temperature is None:
+            raise HomeAssistantError(
+                "Temperature is required for Timer, Manual and Next time block termination types"
+            )
+        if termination_type == TERMINATION_TIMER and duration_minutes is None:
+            raise HomeAssistantError("Duration is required for Timer termination type")
 
         entity_registry = er.async_get(hass)
         entity_entry = entity_registry.async_get(entity_id)
@@ -560,7 +638,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 f"but its config entry belongs to home {service_coordinator.home_id}"
             )
 
-        duration_seconds = duration_minutes * 60
+        duration_seconds = duration_minutes * 60 if termination_type == TERMINATION_TIMER else None
 
         try:
             await service_coordinator.api.set_room_temperature(
@@ -572,10 +650,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             )
             await service_coordinator.async_request_refresh()
             _LOGGER.info(
-                "Set %s to %.1f°C for %d minutes (home %s, room %s)",
+                "Set %s to %.1f°C with termination %s (duration %s minutes, home %s, room %s)",
                 entity_id,
                 temperature,
-                duration_minutes,
+                termination_type,
+                duration_minutes if termination_type == TERMINATION_TIMER else "n/a",
                 service_coordinator.home_id,
                 room_id,
             )
@@ -619,6 +698,44 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         except TadoXApiError as err:
             raise HomeAssistantError(f"Failed to get schedule: {err}") from err
 
+    async def async_get_away_schedule(call: ServiceCall) -> dict[str, Any]:
+        """Return the stored per-room Away configuration, without changing it."""
+        service_coordinator, room_id = resolve_room(call.data[ATTR_ENTITY_ID])
+        try:
+            return await service_coordinator.api.get_zone_away_configuration(room_id)
+        except TadoXApiError as err:
+            raise HomeAssistantError(f"Failed to get Away schedule: {err}") from err
+
+    async def async_set_away_schedule(call: ServiceCall) -> None:
+        """Update a room's stored Away settings without changing saved profiles."""
+        service_coordinator, room_id = resolve_room(call.data[ATTR_ENTITY_ID])
+        try:
+            previous = await service_coordinator.api.get_zone_away_configuration(room_id)
+            mode = call.data["mode"]
+            temperature = (
+                call.data.get("away_temperature", previous.get("awayTemperatureCelsius"))
+                if mode == "ON" else None
+            )
+            if mode == "ON" and temperature is None:
+                raise HomeAssistantError(
+                    "away_temperature is required when switching Away mode ON "
+                    "from a configuration without an Away temperature"
+                )
+            configuration = {
+                "mode": mode,
+                "awayTemperatureCelsius": temperature,
+                "preheatingLevel": call.data.get(
+                    "preheating_level", previous["preheatingLevel"]
+                ),
+            }
+            await service_coordinator.api.set_zone_away_configuration(room_id, configuration)
+            manager = getattr(service_coordinator, "schedule_profile_manager", None)
+            if manager is not None:
+                await manager.check(room_id)
+            _LOGGER.info("Away schedule updated for room %s (home %s)", room_id, service_coordinator.home_id)
+        except TadoXApiError as err:
+            raise HomeAssistantError(f"Failed to set Away schedule: {err}") from err
+
     async def async_set_schedule(call: ServiceCall) -> None:
         """Set the smart schedule blocks for a room."""
         service_coordinator, room_id = resolve_room(call.data[ATTR_ENTITY_ID])
@@ -632,17 +749,63 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         _validate_schedule_blocks(day_type, day_schedule)
         try:
             await service_coordinator.api.set_zone_schedule(room_id, day_type, day_schedule)
-            room = service_coordinator.data.rooms.get(room_id)
-            if room:
-                room.schedule = [
-                    block
-                    for block in room.schedule
-                    if block.get("dayType") != day_type
-                ] + [{**block, "dayType": day_type} for block in day_schedule]
             await service_coordinator.async_request_refresh()
             _LOGGER.info("Schedule updated for room %s (%s)", room_id, day_type)
         except TadoXApiError as err:
             raise HomeAssistantError(f"Failed to set schedule: {err}") from err
+
+    def profile_target(call):
+        service_coordinator, room_id = resolve_room(call.data[ATTR_ENTITY_ID])
+        return service_coordinator.schedule_profile_manager, room_id
+
+    async def async_save_profile(call):
+        manager, room_id = profile_target(call)
+        try:
+            profile = call.data["profile"].strip()
+            default = base_default_name(profile)
+            if default is not None:
+                await manager.save_home_default(room_id, default)
+            else:
+                await manager.save(room_id, profile)
+        except Exception as err:
+            raise HomeAssistantError(f"Failed to save schedule profile: {err}") from err
+
+    async def async_restore_profile(call):
+        manager, room_id = profile_target(call)
+        try:
+            await manager.restore(room_id, call.data["profile"].strip())
+        except Exception as err:
+            raise HomeAssistantError(f"Failed to restore schedule profile: {err}") from err
+
+    async def async_list_profiles(call):
+        manager, room_id = profile_target(call)
+        key = str(room_id)
+        return {"profiles": [{"name": n, "saved": n in manager.profiles.get(key, {})} for n in manager.names(room_id)],
+                "home_defaults": [{"name": f"{n} default", "customized": n in manager.home_defaults}
+                                  for n in DEFAULT_PROFILES],
+                "current": manager.selected(room_id), "status": manager.status.get(key, "Unknown"),
+                "matching_profiles": manager.matches.get(key, [])}
+
+    async def async_delete_profile(call):
+        manager, room_id = profile_target(call)
+        await manager.delete(room_id, call.data["profile"].strip())
+
+    async def async_reset_schedule_default(call):
+        service_coordinator = get_home_coordinator(call)
+        manager = service_coordinator.schedule_profile_manager
+        name = call.data["profile"].strip()
+        profile = base_default_name(name) or name
+        await manager.reset_home_default(profile)
+
+    for service_name, handler, schema, response in (
+        (SERVICE_RESET_DEFAULT, async_reset_schedule_default, RESET_DEFAULT_SCHEMA, SupportsResponse.NONE),
+        (SERVICE_SAVE_PROFILE, async_save_profile, PROFILE_SCHEMA, SupportsResponse.NONE),
+        (SERVICE_RESTORE_PROFILE, async_restore_profile, PROFILE_SCHEMA, SupportsResponse.NONE),
+        (SERVICE_LIST_PROFILES, async_list_profiles, SERVICE_GET_SCHEDULE_SCHEMA, SupportsResponse.ONLY),
+        (SERVICE_DELETE_PROFILE, async_delete_profile, PROFILE_SCHEMA, SupportsResponse.NONE),
+    ):
+        if not hass.services.has_service(DOMAIN, service_name):
+            hass.services.async_register(DOMAIN, service_name, handler, schema=schema, supports_response=response)
 
     async def async_get_day_report(call: ServiceCall) -> dict[str, Any]:
         """Return the historical day report for a room."""
@@ -688,6 +851,23 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             async_get_schedule,
             schema=SERVICE_GET_SCHEDULE_SCHEMA,
             supports_response=SupportsResponse.ONLY,
+        )
+
+    if not hass.services.has_service(DOMAIN, SERVICE_GET_AWAY_SCHEDULE):
+        hass.services.async_register(
+            DOMAIN,
+            SERVICE_GET_AWAY_SCHEDULE,
+            async_get_away_schedule,
+            schema=SERVICE_GET_SCHEDULE_SCHEMA,
+            supports_response=SupportsResponse.ONLY,
+        )
+
+    if not hass.services.has_service(DOMAIN, SERVICE_SET_AWAY_SCHEDULE):
+        hass.services.async_register(
+            DOMAIN,
+            SERVICE_SET_AWAY_SCHEDULE,
+            async_set_away_schedule,
+            schema=SERVICE_SET_AWAY_SCHEDULE_SCHEMA,
         )
 
     if not hass.services.has_service(DOMAIN, SERVICE_SET_SCHEDULE):
@@ -755,7 +935,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
     if unload_ok := await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
-        hass.data[DOMAIN].pop(entry.entry_id)
+        coordinator = hass.data[DOMAIN].pop(entry.entry_id)
+        if hasattr(coordinator, "schedule_profile_manager"):
+            coordinator.schedule_profile_manager.stop()
 
     return unload_ok
 

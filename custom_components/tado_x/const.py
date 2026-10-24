@@ -37,6 +37,10 @@ API_CALLS_PER_UPDATE: Final = 6  # get_rooms + get_rooms_and_devices + get_home_
 
 # Config keys for options
 CONF_SCAN_INTERVAL: Final = "scan_interval"
+CONF_ENABLE_SCHEDULE_POLLING: Final = "enable_schedule_polling"
+CONF_SCHEDULE_POLL_INTERVAL: Final = "schedule_poll_interval"
+DEFAULT_SCHEDULE_POLL_INTERVAL: Final = 3600  # seconds
+MIN_SCHEDULE_POLL_INTERVAL: Final = 900  # seconds
 
 # Feature toggles for optional API calls
 CONF_ENABLE_WEATHER: Final = "enable_weather"

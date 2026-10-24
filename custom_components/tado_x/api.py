@@ -50,6 +50,9 @@ class TadoXApi:
         token_expiry: datetime | None = None,
         api_calls_today: int = 0,
         api_reset_time: datetime | None = None,
+        api_last_reset: datetime | None = None,
+        api_previous_used: int | None = None,
+        api_previous_quota: int | None = None,
         has_auto_assist: bool = False,
         on_token_refresh: callable | None = None,
     ) -> None:
@@ -63,23 +66,21 @@ class TadoXApi:
         self._on_token_refresh = on_token_refresh
         self._get_room_control_defaults = None
 
-        # Initialize API call tracking with persistence support
-        # Tado resets quotas at 12:00 UTC (noon), not midnight
-        now = datetime.now(timezone.utc)
-        default_reset_time = self._calculate_next_reset_time(now)
-
-        if api_reset_time and api_reset_time > now:
-            # Restore persisted values if reset time hasn't passed
-            self._api_calls_today = api_calls_today
-            self._api_call_reset_time = api_reset_time
-        else:
-            # Reset counter if new period or no persisted data
-            self._api_calls_today = 0
-            self._api_call_reset_time = default_reset_time
-
-        # Rate limit info from API headers (will be updated on each request)
-        self._api_quota_limit: int | None = None  # From ratelimit-policy header
-        self._api_quota_remaining: int | None = None  # From ratelimit header
+        # The server's daily quota counter, not a fixed UTC clock, determines
+        # the reset. The old fixed-time value is intentionally not migrated.
+        self._api_calls_today = max(0, api_calls_today)
+        self._api_last_reset = api_last_reset if (
+            api_last_reset is not None and api_last_reset.tzinfo is not None
+        ) else None
+        self._api_call_reset_time = (
+            self._api_last_reset + timedelta(hours=24)
+            if self._api_last_reset is not None else None
+        )
+        self._api_previous_used = api_previous_used
+        self._api_previous_quota = api_previous_quota
+        self._api_last_observed_at: datetime | None = None
+        self._api_quota_limit: int | None = None
+        self._api_quota_remaining: int | None = None
 
     @property
     def access_token(self) -> str | None:
@@ -112,9 +113,26 @@ class TadoXApi:
         return self._api_calls_today
 
     @property
-    def api_reset_time(self) -> datetime:
+    def api_reset_time(self) -> datetime | None:
         """Return when the API quota resets."""
         return self._api_call_reset_time
+
+    @property
+    def api_last_reset(self) -> datetime | None:
+        """Most recently observed server quota rollover."""
+        return self._api_last_reset
+
+    @property
+    def api_previous_used(self) -> int | None:
+        return self._api_previous_used
+
+    @property
+    def api_previous_quota(self) -> int | None:
+        return self._api_previous_quota
+
+    @property
+    def api_last_observed_at(self) -> datetime | None:
+        return self._api_last_observed_at
 
     @property
     def has_auto_assist(self) -> bool:
@@ -136,29 +154,34 @@ class TadoXApi:
         """Return the API quota remaining from headers (if available)."""
         return self._api_quota_remaining
 
-    @staticmethod
-    def _calculate_next_reset_time(now: datetime) -> datetime:
-        """Calculate the next API quota reset time.
+    def _observe_quota_usage(self, quota: int, remaining: int) -> None:
+        """Learn the server's daily reset from a genuine quota-counter drop.
 
-        Tado resets quotas at 12:00 UTC (noon). This method calculates
-        the next reset time based on the current time.
-
-        Args:
-            now: Current datetime in UTC
-
-        Returns:
-            Next reset time as datetime in UTC
+        Ignore counter changes caused by a different quota tier and small
+        fluctuations. The observation time is an approximation bounded by
+        consecutive requests, not an exact server-supplied reset timestamp.
         """
-        # Reset time is 12:00 UTC
-        reset_hour = 12
-        today_reset = now.replace(hour=reset_hour, minute=0, second=0, microsecond=0)
-
-        if now >= today_reset:
-            # Already past today's reset, next reset is tomorrow at noon
-            return today_reset + timedelta(days=1)
-        else:
-            # Today's reset hasn't happened yet
-            return today_reset
+        if quota <= 0 or not 0 <= remaining <= quota:
+            return
+        now = datetime.now(timezone.utc)
+        used = quota - remaining
+        previous = self._api_previous_used
+        previous_quota = self._api_previous_quota
+        if previous is not None and previous_quota == quota:
+            # A reset is a substantial drop to a low counter, not just a
+            # decrement due to server-side corrections or stale responses.
+            low = max(5, int(quota * 0.02))
+            significant = max(10, int(quota * 0.05))
+            if used <= low and previous - used >= significant:
+                self._api_last_reset = now
+                self._api_call_reset_time = now + timedelta(hours=24)
+                _LOGGER.info(
+                    "Observed Tado API quota reset (previous=%s, now=%s, quota=%s)",
+                    previous, used, quota,
+                )
+        self._api_previous_used = used
+        self._api_previous_quota = quota
+        self._api_last_observed_at = now
 
     def _parse_rate_limit_headers(self, headers: dict) -> None:
         """Parse rate limit information from Tado API response headers.
@@ -187,6 +210,10 @@ class TadoXApi:
             remaining_match = re.search(r"r=(\d+)", ratelimit_header)
             if remaining_match:
                 self._api_quota_remaining = int(remaining_match.group(1))
+                if self._api_quota_limit is not None:
+                    self._observe_quota_usage(
+                        self._api_quota_limit, self._api_quota_remaining
+                    )
 
     async def start_device_auth(self) -> dict[str, Any]:
         """Start the device authorization flow.
@@ -333,12 +360,6 @@ class TadoXApi:
 
         # Track API call
         self._api_calls_today += 1
-
-        # Reset counter if past reset time (noon UTC)
-        now = datetime.now(timezone.utc)
-        if now >= self._api_call_reset_time:
-            self._api_calls_today = 1
-            self._api_call_reset_time = self._calculate_next_reset_time(now)
 
         headers = {
             "Authorization": f"Bearer {self._access_token}",
@@ -842,6 +863,57 @@ class TadoXApi:
             f"{TADO_HOPS_API_URL}/homes/{self._home_id}/rooms/{room_id}/schedule",
         )
         return result if isinstance(result, dict) else {}
+
+    @staticmethod
+    def _normalize_away_configuration(config: dict[str, Any], room_id: int) -> dict[str, Any]:
+        """Validate Tado X room Away settings; strip response-only roomId."""
+        if not isinstance(config, dict):
+            raise TadoXApiError("Tado X Away configuration is not a JSON object")
+        if "roomId" in config and str(config["roomId"]) != str(room_id):
+            raise TadoXApiError(
+                f"Tado X Away response roomId mismatch: expected {room_id}, "
+                f"got {config['roomId']}"
+            )
+        mode = config.get("mode")
+        if mode not in ("ON", "OFF"):
+            raise TadoXApiError(f"Unexpected Tado X Away mode: {mode!r}")
+        level = config.get("preheatingLevel")
+        if not isinstance(level, str) or not level:
+            raise TadoXApiError("Tado X Away preheatingLevel missing or invalid")
+        temperature = config.get("awayTemperatureCelsius")
+        if mode == "ON":
+            if (isinstance(temperature, bool) or
+                    not isinstance(temperature, (int, float)) or
+                    not 0 < temperature < 50):
+                raise TadoXApiError("Tado X Away ON requires a valid temperature")
+        elif temperature is not None:
+            raise TadoXApiError("Tado X Away OFF must have null temperature")
+        return {
+            "mode": mode,
+            "awayTemperatureCelsius": temperature,
+            "preheatingLevel": level,
+        }
+
+    async def get_zone_away_configuration(self, room_id: int) -> dict[str, Any]:
+        """Read saved per-room Tado X Away configuration from Hops API."""
+        if not self._home_id:
+            raise TadoXApiError("Home ID not set")
+        result = await self._request(
+            "GET",
+            f"{TADO_HOPS_API_URL}/homes/{self._home_id}/settings/away/rooms/{room_id}",
+        )
+        return self._normalize_away_configuration(result, room_id)
+
+    async def set_zone_away_configuration(self, room_id: int, config: dict[str, Any]) -> None:
+        """Write saved Away settings, preserving mode, temperature and preheating."""
+        if not self._home_id:
+            raise TadoXApiError("Home ID not set")
+        payload = self._normalize_away_configuration(config, room_id)
+        await self._request(
+            "PUT",
+            f"{TADO_HOPS_API_URL}/homes/{self._home_id}/settings/away/rooms/{room_id}",
+            json_data=payload,
+        )
 
     async def set_zone_schedule(
         self,

@@ -27,12 +27,13 @@ add_meter_reading:
   name: Add meter reading
   description: Upload a meter reading to Tado Energy IQ
   fields:
-    home_id:
-      name: Tado home ID
-      description: Required when more than one Tado home is configured.
+    device_id:
+      name: Tado X Home device
+      description: Optional when only one Tado X home is configured; select the Tado X Home device when multiple homes are configured (not a room or thermostat).
       required: false
       selector:
-        text:
+        device:
+          integration: tado_x
     reading:
       name: Reading
       description: Meter reading value (integer)
@@ -55,12 +56,13 @@ set_eiq_tariff:
   name: Set energy tariff
   description: Set an energy tariff in Tado Energy IQ for cost calculations
   fields:
-    home_id:
-      name: Tado home ID
-      description: Required when more than one Tado home is configured.
+    device_id:
+      name: Tado X Home device
+      description: Optional when only one Tado X home is configured; select the Tado X Home device when multiple homes are configured (not a room or thermostat).
       required: false
       selector:
-        text:
+        device:
+          integration: tado_x
     tariff:
       name: Tariff
       description: Price per unit (e.g., 0.85 for €0.85/m³)
@@ -101,7 +103,7 @@ set_eiq_tariff:
 
 set_climate_timer:
   name: Set climate timer
-  description: Set a room temperature for a specific duration. Useful for temporary overrides like a quick boost or extending heating.
+  description: Set a room temperature override. Timer (default) requires temperature and duration; Manual requires temperature only; Next time block requires temperature but not duration.
   fields:
     entity_id:
       name: Climate entity
@@ -114,8 +116,8 @@ set_climate_timer:
           domain: climate
     temperature:
       name: Temperature
-      description: Target temperature in °C
-      required: true
+      description: Required for Timer, Manual and Next time block.
+      required: false
       example: 22.0
       selector:
         number:
@@ -125,8 +127,8 @@ set_climate_timer:
           unit_of_measurement: "°C"
     duration:
       name: Duration
-      description: Duration in minutes (1-1440, i.e., up to 24 hours)
-      required: true
+      description: Required only for Timer (1-1440 minutes); ignored for Manual and Next time block.
+      required: false
       example: 30
       selector:
         number:
@@ -136,7 +138,7 @@ set_climate_timer:
           unit_of_measurement: "min"
     termination_type:
       name: Termination type
-      description: How long the override should stay active
+      description: Timer (default if omitted) requires temperature and duration; Manual requires temperature only; Next time block requires temperature only.
       required: false
       default: "TIMER"
       example: "TIMER"
@@ -162,6 +164,65 @@ get_schedule:
         entity:
           integration: tado_x
           domain: climate
+
+get_away_schedule:
+  name: Get away schedule
+  description: Read the stored per-room Away mode, temperature and preheating configuration. Returns the settings as a response without changing them.
+  fields:
+    entity_id:
+      name: Climate entity
+      description: The Tado X room whose Away settings should be returned
+      required: true
+      selector:
+        entity:
+          integration: tado_x
+          domain: climate
+
+set_away_schedule:
+  name: Set away schedule
+  description: Update a room's Tado X Away mode, temperature and optional preheating level. Existing saved schedule profiles are not modified. When enabling Away from OFF, specify a temperature.
+  fields:
+    entity_id:
+      name: Climate entity
+      description: The Tado X room whose Away configuration should be updated
+      required: true
+      selector:
+        entity:
+          integration: tado_x
+          domain: climate
+    mode:
+      name: Away mode
+      description: Enable or disable Away temperature control
+      required: true
+      selector:
+        select:
+          options:
+            - label: "On"
+              value: "ON"
+            - label: "Off"
+              value: "OFF"
+    away_temperature:
+      name: Away temperature
+      description: Temperature in °C when Away mode is ON. If omitted, the current Away temperature is retained when available. Ignored for OFF.
+      required: false
+      selector:
+        number:
+          min: 0.1
+          max: 49.9
+          step: 0.5
+          mode: box
+          unit_of_measurement: °C
+    preheating_level:
+      name: Preheating level
+      description: Optional Tado X preheating setting; if omitted, the current setting is preserved.
+      required: false
+      selector:
+        select:
+          options:
+            - "OFF"
+            - "ECO"
+            - "BALANCE"
+            - "COMFORT"
 
 set_schedule:
   name: Set schedule
@@ -236,12 +297,13 @@ get_day_report:
 
 get_holiday_mode:
   fields:
-    home_id:
-      name: Home ID
-      description: Required when multiple Tado X homes are configured.
+    device_id:
+      name: Tado X Home device
+      description: Optional when only one Tado X home is configured; select the Tado X Home device when multiple homes are configured (not a room or thermostat).
       required: false
       selector:
-        text:
+        device:
+          integration: tado_x
   name: Get holiday mode
   description: >-
     Read the home's holiday mode settings (enabled, start/end dates and room
@@ -255,12 +317,13 @@ set_holiday_mode:
     Requires an Auto-Assist (Premium) subscription. Dates are ISO-8601
     date-time strings.
   fields:
-    home_id:
-      name: Home ID
-      description: Required when multiple Tado X homes are configured.
+    device_id:
+      name: Tado X Home device
+      description: Optional when only one Tado X home is configured; select the Tado X Home device when multiple homes are configured (not a room or thermostat).
       required: false
       selector:
-        text:
+        device:
+          integration: tado_x
     enabled:
       name: Enabled
       description: Turn holiday mode on (true) or off (false).
@@ -282,3 +345,93 @@ set_holiday_mode:
       example: "2027-01-05T20:00:00Z"
       selector:
         text:
+
+save_schedule_profile:
+  name: Save schedule profile
+  description: Save the current Home and Away schedule to a room profile, or to a home-wide template using a name such as Eco default.
+  fields:
+    entity_id:
+      name: Climate entity
+      required: true
+      selector:
+        entity:
+          integration: tado_x
+          domain: climate
+    profile:
+      name: Profile name
+      required: true
+      example: Eco
+      selector:
+        text:
+
+restore_schedule_profile:
+  name: Restore schedule profile
+  description: Restore a room profile (with home default fallback), or explicitly restore a home-wide template using a name such as Eco default.
+  fields:
+    entity_id:
+      name: Climate entity
+      required: true
+      selector:
+        entity:
+          integration: tado_x
+          domain: climate
+    profile:
+      name: Profile name
+      required: true
+      example: Eco
+      selector:
+        text:
+
+list_schedule_profiles:
+  name: List schedule profiles
+  description: List configured and unconfigured schedule profiles for a room.
+  fields:
+    entity_id:
+      name: Climate entity
+      required: true
+      selector:
+        entity:
+          integration: tado_x
+          domain: climate
+
+delete_schedule_profile:
+  name: Delete schedule profile
+  description: Delete a user-defined schedule profile. Default profile names cannot be deleted.
+  fields:
+    entity_id:
+      name: Climate entity
+      required: true
+      selector:
+        entity:
+          integration: tado_x
+          domain: climate
+    profile:
+      name: Profile name
+      required: true
+      example: Eco
+      selector:
+        text:
+
+reset_schedule_default:
+  name: Reset home schedule default
+  description: Remove a customized home-wide template, reverting to the factory schedule. Does not change any room's active schedule or saved room profiles.
+  fields:
+    device_id:
+      name: Tado X Home device
+      description: Optional when only one Tado X home is configured; select the Tado X Home device when multiple homes are configured.
+      required: false
+      selector:
+        device:
+          integration: tado_x
+    profile:
+      name: Default profile name
+      description: Normal, Alternative, Eco, or Not in use (optional default suffix).
+      required: true
+      example: Eco
+      selector:
+        select:
+          options:
+            - Normal
+            - Alternative
+            - Eco
+            - Not in use

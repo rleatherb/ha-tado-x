@@ -26,6 +26,10 @@ from .const import (
     CONF_HOME_NAME,
     CONF_REFRESH_TOKEN,
     CONF_SCAN_INTERVAL,
+    CONF_ENABLE_SCHEDULE_POLLING,
+    CONF_SCHEDULE_POLL_INTERVAL,
+    DEFAULT_SCHEDULE_POLL_INTERVAL,
+    MIN_SCHEDULE_POLL_INTERVAL,
     CONF_TOKEN_EXPIRY,
     DOMAIN,
     FEATURE_ENTITY_MAP,
@@ -304,6 +308,8 @@ class TadoXOptionsFlow(OptionsFlow):
         if user_input is not None:
             has_auto_assist = user_input[CONF_HAS_AUTO_ASSIST]
             custom_interval = user_input.get(CONF_SCAN_INTERVAL)
+            enable_schedule_polling = user_input.get(CONF_ENABLE_SCHEDULE_POLLING, has_auto_assist)
+            schedule_poll_interval = user_input.get(CONF_SCHEDULE_POLL_INTERVAL, DEFAULT_SCHEDULE_POLL_INTERVAL)
 
             # Get feature toggles
             enable_weather = user_input.get(CONF_ENABLE_WEATHER, has_auto_assist)
@@ -327,6 +333,8 @@ class TadoXOptionsFlow(OptionsFlow):
                 **self.config_entry.data,
                 CONF_HAS_AUTO_ASSIST: has_auto_assist,
                 CONF_SCAN_INTERVAL: scan_interval,
+                CONF_ENABLE_SCHEDULE_POLLING: enable_schedule_polling,
+                CONF_SCHEDULE_POLL_INTERVAL: schedule_poll_interval,
                 CONF_ENABLE_WEATHER: enable_weather,
                 CONF_ENABLE_MOBILE_DEVICES: enable_mobile_devices,
                 CONF_ENABLE_AIR_COMFORT: enable_air_comfort,
@@ -344,6 +352,9 @@ class TadoXOptionsFlow(OptionsFlow):
                 coordinator = self.hass.data[DOMAIN][self.config_entry.entry_id]
                 coordinator.api.has_auto_assist = has_auto_assist
                 coordinator.update_scan_interval(scan_interval)
+                manager = getattr(coordinator, "schedule_profile_manager", None)
+                if manager is not None:
+                    manager.configure_polling(enable_schedule_polling, schedule_poll_interval)
                 # Update feature flags
                 coordinator.enable_weather = enable_weather
                 coordinator.enable_mobile_devices = enable_mobile_devices
@@ -358,6 +369,8 @@ class TadoXOptionsFlow(OptionsFlow):
             return self.async_create_entry(title="", data={})
 
         current_auto_assist = self.config_entry.data.get(CONF_HAS_AUTO_ASSIST, False)
+        current_schedule_polling = self.config_entry.data.get(CONF_ENABLE_SCHEDULE_POLLING, current_auto_assist)
+        current_schedule_interval = self.config_entry.data.get(CONF_SCHEDULE_POLL_INTERVAL, DEFAULT_SCHEDULE_POLL_INTERVAL)
         current_interval = self.config_entry.data.get(CONF_SCAN_INTERVAL, 0)
 
         # Feature toggles - default to True for Auto-Assist, False for free tier
@@ -388,6 +401,12 @@ class TadoXOptionsFlow(OptionsFlow):
                         CONF_SCAN_INTERVAL,
                         default=current_interval if current_interval > 0 else default_interval,
                     ): vol.All(vol.Coerce(int), vol.Range(min=30, max=3600)),
+                    vol.Required(
+                        CONF_ENABLE_SCHEDULE_POLLING, default=current_schedule_polling,
+                    ): bool,
+                    vol.Required(
+                        CONF_SCHEDULE_POLL_INTERVAL, default=current_schedule_interval,
+                    ): vol.All(vol.Coerce(int), vol.Range(min=MIN_SCHEDULE_POLL_INTERVAL, max=86400)),
                     vol.Required(
                         CONF_ENABLE_WEATHER,
                         default=current_enable_weather,

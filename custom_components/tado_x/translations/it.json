@@ -49,7 +49,11 @@
           "enable_weather": "Abilita sensori meteo",
           "enable_mobile_devices": "Abilita tracciamento dispositivi mobili",
           "enable_air_comfort": "Abilita sensori comfort dell'aria",
-          "enable_running_times": "Abilita sensori tempo di riscaldamento"
+          "enable_running_times": "Abilita sensori tempo di riscaldamento",
+          "enable_flow_temp": "Enable flow temperature control",
+          "enable_hot_water": "Enable hot water sensor",
+          "enable_schedule_polling": "Controlla automaticamente le modifiche ai programmi",
+          "schedule_poll_interval": "Intervallo di controllo programmi (secondi)"
         },
         "data_description": {
           "has_auto_assist": "Abilita questa opzione se hai un abbonamento Auto-Assist. L'intervallo di aggiornamento verrà regolato automaticamente.",
@@ -57,7 +61,11 @@
           "enable_weather": "Abilita i sensori di temperatura esterna, intensità solare e stato meteo. Usa 1 chiamata API per aggiornamento.",
           "enable_mobile_devices": "Abilita i device tracker per i telefoni con geofencing. Usa 1 chiamata API per aggiornamento.",
           "enable_air_comfort": "Abilita i sensori di qualità e comfort dell'aria per stanza. Usa 1 chiamata API per aggiornamento.",
-          "enable_running_times": "Abilita i sensori del tempo di riscaldamento giornaliero per stanza. Usa 1 chiamata API per aggiornamento."
+          "enable_running_times": "Abilita i sensori del tempo di riscaldamento giornaliero per stanza. Usa 1 chiamata API per aggiornamento.",
+          "enable_flow_temp": "Enables max flow temperature slider and auto-adaptation switch (requires OpenTherm boiler). Uses 1 API call per update.",
+          "enable_hot_water": "Enables domestic hot water state sensor. Uses 1 API call per update.",
+          "enable_schedule_polling": "Controlla i programmi Home e Away. Utilizza 2 chiamate API per stanza per aggiornamento. Attivo per impostazione predefinita con Auto-Assist, altrimenti disattivo.",
+          "schedule_poll_interval": "Intervallo quando il controllo è attivo. Minimo: 900 secondi (15 minuti); predefinito: 3600 secondi (1 ora); massimo: 86400 secondi (24 ore)."
         }
       }
     }
@@ -65,51 +73,246 @@
   "services": {
     "set_temperature_offset": {
       "name": "Imposta offset temperatura",
-      "description": "Regola l'offset di temperatura per un dispositivo Tado X (valvola o sensore) per calibrare le letture.",
+      "description": "Regola l’offset della temperatura di un dispositivo Tado X (valvola o sensore) per calibrare la lettura.",
       "fields": {
         "device_id": {
-          "name": "Dispositivo",
-          "description": "Il dispositivo Tado X da calibrare"
+          "name": "Dispositivo casa Tado X",
+          "description": "Dispositivo Tado X da calibrare."
         },
         "offset": {
           "name": "Offset temperatura",
-          "description": "Offset di temperatura in °C. Valori positivi aumentano la lettura, valori negativi la diminuiscono."
+          "description": "Correzione in °C. Valori positivi aumentano la lettura, valori negativi la diminuiscono."
         }
       }
     },
     "add_meter_reading": {
       "name": "Aggiungi lettura contatore",
-      "description": "Carica una lettura del contatore su Tado Energy IQ",
+      "description": "Invia una lettura del contatore a Tado Energy IQ.",
       "fields": {
+        "device_id": {
+          "name": "Dispositivo casa Tado X",
+          "description": "Facoltativo se è configurata una sola casa Tado X; selezionare il dispositivo Casa Tado X se ce ne sono più di una."
+        },
         "reading": {
-          "name": "Lettura",
-          "description": "Valore della lettura del contatore (intero)"
+          "name": "Lettura contatore",
+          "description": "Valore intero della lettura del contatore."
         },
         "date": {
           "name": "Data",
-          "description": "Data della lettura (formato YYYY-MM-DD, predefinito oggi)"
+          "description": "Data nel formato AAAA-MM-GG; oggi per impostazione predefinita."
         }
       }
     },
     "set_eiq_tariff": {
       "name": "Imposta tariffa energetica",
-      "description": "Imposta una tariffa energetica in Tado Energy IQ per il calcolo dei costi",
+      "description": "Imposta una tariffa energetica in Tado Energy IQ per calcolare i costi.",
       "fields": {
+        "device_id": {
+          "name": "Dispositivo casa Tado X",
+          "description": "Facoltativo se è configurata una sola casa Tado X; selezionare il dispositivo Casa Tado X se ce ne sono più di una."
+        },
         "tariff": {
           "name": "Tariffa",
-          "description": "Prezzo per unità (es. 0.85 per €0,85/m³)"
+          "description": "Prezzo per unità (ad esempio 0,85 €/m³)."
         },
         "unit": {
           "name": "Unità",
-          "description": "Tipo di unità energetica (m3 o kWh)"
+          "description": "Unità energetica: m³ o kWh."
         },
         "start_date": {
-          "name": "Data di inizio",
-          "description": "Data di inizio validità della tariffa (formato YYYY-MM-DD)"
+          "name": "Data inizio",
+          "description": "Data di inizio nel formato AAAA-MM-GG o data e ora ISO 8601."
         },
         "end_date": {
-          "name": "Data di fine",
-          "description": "Data di fine validità della tariffa (formato YYYY-MM-DD)"
+          "name": "Data fine",
+          "description": "Data di fine nel formato AAAA-MM-GG o data e ora ISO 8601."
+        }
+      }
+    },
+    "set_climate_timer": {
+      "name": "Imposta override riscaldamento",
+      "description": "Imposta una modifica temporanea della temperatura. Timer (predefinito): temperatura e durata obbligatorie; Manuale: solo temperatura; Prossima fascia oraria: temperatura obbligatoria, durata non necessaria.",
+      "fields": {
+        "entity_id": {
+          "name": "Entità clima",
+          "description": "Stanza Tado X da consultare o controllare."
+        },
+        "temperature": {
+          "name": "Temperatura",
+          "description": "Obbligatoria per Timer, Manuale e Prossima fascia oraria."
+        },
+        "duration": {
+          "name": "Durata",
+          "description": "Obbligatoria solo per Timer (1–1440 minuti); ignorata negli altri modi."
+        },
+        "termination_type": {
+          "name": "Tipo di terminazione",
+          "description": "Timer predefinito (temperatura e durata obbligatorie); Manuale e Prossima fascia oraria richiedono solo la temperatura."
+        }
+      }
+    },
+    "get_schedule": {
+      "name": "Ottieni programmazione",
+      "description": "Legge la programmazione del riscaldamento di una stanza e restituisce le fasce orarie.",
+      "fields": {
+        "entity_id": {
+          "name": "Entità clima",
+          "description": "Stanza Tado X da consultare o controllare."
+        }
+      }
+    },
+    "get_away_schedule": {
+      "name": "Ottieni programmazione Assenza",
+      "description": "Legge le impostazioni Assenza salvate per una stanza senza modificarle.",
+      "fields": {
+        "entity_id": {
+          "name": "Entità clima",
+          "description": "Stanza Tado X da consultare o controllare."
+        }
+      }
+    },
+    "set_away_schedule": {
+      "name": "Imposta programmazione Assenza",
+      "description": "Aggiorna la modalità Assenza, la temperatura e l’eventuale preriscaldamento. I profili salvati non vengono modificati.",
+      "fields": {
+        "entity_id": {
+          "name": "Entità clima",
+          "description": "Stanza Tado X da consultare o controllare."
+        },
+        "mode": {
+          "name": "Modalità Assenza",
+          "description": "Attiva o disattiva il controllo della temperatura in modalità Assenza."
+        },
+        "away_temperature": {
+          "name": "Temperatura Assenza",
+          "description": "Temperatura in °C per la modalità Assenza attiva; se omessa mantiene il valore attuale."
+        },
+        "preheating_level": {
+          "name": "Livello preriscaldamento",
+          "description": "Livello di preriscaldamento facoltativo; se omesso mantiene quello attuale."
+        }
+      }
+    },
+    "set_schedule": {
+      "name": "Imposta programmazione",
+      "description": "Sostituisce le fasce orarie della stanza per il tipo di giorno indicato.",
+      "fields": {
+        "entity_id": {
+          "name": "Entità clima",
+          "description": "Stanza Tado X da consultare o controllare."
+        },
+        "day_type": {
+          "name": "Tipo di giorno",
+          "description": "Giorno o gruppo di giorni a cui applicare la programmazione."
+        },
+        "schedule": {
+          "name": "Fasce orarie",
+          "description": "Elenco JSON delle fasce orarie con inizio, fine e temperatura."
+        }
+      }
+    },
+    "get_day_report": {
+      "name": "Ottieni rapporto giornaliero",
+      "description": "Legge i dati storici di temperatura, umidità e riscaldamento per stanza e data. I giorni precedenti richiedono Auto-Assist (Premium).",
+      "fields": {
+        "entity_id": {
+          "name": "Entità clima",
+          "description": "Stanza Tado X da consultare o controllare."
+        },
+        "date": {
+          "name": "Data",
+          "description": "Data nel formato AAAA-MM-GG; oggi per impostazione predefinita."
+        }
+      }
+    },
+    "get_holiday_mode": {
+      "name": "Ottieni modalità Vacanza",
+      "description": "Legge le impostazioni della modalità Vacanza della casa. Richiede Auto-Assist (Premium).",
+      "fields": {
+        "device_id": {
+          "name": "Dispositivo casa Tado X",
+          "description": "Facoltativo se è configurata una sola casa Tado X; selezionare il dispositivo Casa Tado X se ce ne sono più di una."
+        }
+      }
+    },
+    "set_holiday_mode": {
+      "name": "Imposta modalità Vacanza",
+      "description": "Attiva o disattiva la modalità Vacanza e imposta facoltativamente le date di inizio e fine. Richiede Auto-Assist (Premium).",
+      "fields": {
+        "device_id": {
+          "name": "Dispositivo casa Tado X",
+          "description": "Facoltativo se è configurata una sola casa Tado X; selezionare il dispositivo Casa Tado X se ce ne sono più di una."
+        },
+        "enabled": {
+          "name": "Abilitato",
+          "description": "Attiva (true) o disattiva (false) la modalità Vacanza."
+        },
+        "start_date": {
+          "name": "Data inizio",
+          "description": "Data di inizio nel formato AAAA-MM-GG o data e ora ISO 8601."
+        },
+        "end_date": {
+          "name": "Data fine",
+          "description": "Data di fine nel formato AAAA-MM-GG o data e ora ISO 8601."
+        }
+      }
+    },
+    "save_schedule_profile": {
+      "name": "Salva profilo di programmazione",
+      "description": "Salva le programmazioni Casa e Assenza in un profilo della stanza o in un modello comune alla casa.",
+      "fields": {
+        "entity_id": {
+          "name": "Entità clima"
+        },
+        "profile": {
+          "name": "Nome profilo"
+        }
+      }
+    },
+    "restore_schedule_profile": {
+      "name": "Ripristina profilo di programmazione",
+      "description": "Ripristina un profilo della stanza o un modello comune alla casa.",
+      "fields": {
+        "entity_id": {
+          "name": "Entità clima"
+        },
+        "profile": {
+          "name": "Nome profilo"
+        }
+      }
+    },
+    "list_schedule_profiles": {
+      "name": "Elenca profili di programmazione",
+      "description": "Elenca i profili di programmazione di una stanza, salvati o meno.",
+      "fields": {
+        "entity_id": {
+          "name": "Entità clima"
+        }
+      }
+    },
+    "delete_schedule_profile": {
+      "name": "Elimina profilo di programmazione",
+      "description": "Elimina un profilo di programmazione personalizzato. I nomi predefiniti non possono essere eliminati.",
+      "fields": {
+        "entity_id": {
+          "name": "Entità clima"
+        },
+        "profile": {
+          "name": "Nome profilo"
+        }
+      }
+    },
+    "reset_schedule_default": {
+      "name": "Ripristina programmazione predefinita della casa",
+      "description": "Rimuove un modello personalizzato della casa e ripristina la programmazione di fabbrica senza modificare le stanze.",
+      "fields": {
+        "device_id": {
+          "name": "Dispositivo casa Tado X",
+          "description": "Facoltativo se è configurata una sola casa Tado X; selezionare il dispositivo Casa Tado X se ce ne sono più di una."
+        },
+        "profile": {
+          "name": "Nome profilo",
+          "description": "Normal, Alternative, Eco o Not in use (suffisso default facoltativo)."
         }
       }
     }
@@ -142,6 +345,15 @@
       "heating_time_today": {
         "name": "Tempo di riscaldamento oggi"
       },
+      "next_schedule_change": {
+        "name": "Prossimo cambio di programmazione"
+      },
+      "next_schedule_temperature": {
+        "name": "Prossima temperatura programmata"
+      },
+      "next_schedule_power": {
+        "name": "Prossimo stato del riscaldamento"
+      },
       "battery": {
         "name": "Batteria",
         "state": {
@@ -165,7 +377,10 @@
         "name": "Limite quota API"
       },
       "api_usage_percentage": {
-        "name": "Utilizzo API"
+        "name": "Utilizzo API attuale"
+      },
+      "api_estimated_daily_usage": {
+        "name": "Utilizzo API giornaliero stimato"
       },
       "api_reset_time": {
         "name": "Reset quota API"
@@ -184,20 +399,18 @@
           "AWAY": "Fuori casa"
         }
       },
+      "presence_mode": {
+        "name": "Presence Mode",
+        "state": {
+          "AUTO": "Auto (Geofencing)",
+          "MANUAL": "Manual Override"
+        }
+      },
       "outdoor_temperature": {
         "name": "Temperatura esterna"
       },
       "solar_intensity": {
         "name": "Intensità solare"
-      },
-      "dhw_state": {
-        "name": "Stato acqua calda",
-        "state": {
-          "OFF": "Spento",
-          "SCHEDULE_OFF": "Programmazione spenta",
-          "SCHEDULE_ON": "Programmazione accesa",
-          "BOOST": "Boost"
-        }
       },
       "weather_state": {
         "name": "Stato meteo",
@@ -231,15 +444,6 @@
           "comfy": "Confortevole",
           "warm": "Caldo"
         }
-      },
-      "next_schedule_change": {
-        "name": "Prossimo cambio di programmazione"
-      },
-      "next_schedule_temperature": {
-        "name": "Prossima temperatura programmata"
-      },
-      "next_schedule_power": {
-        "name": "Prossimo stato del riscaldamento"
       },
       "home_id": {
         "name": "ID casa Tado"
@@ -288,6 +492,9 @@
       "disable_all": {
         "name": "Spegni tutto"
       },
+      "refresh_schedule": {
+        "name": "Refresh Schedule"
+      },
       "resume_schedules": {
         "name": "Riprendi programmazioni"
       },
@@ -299,6 +506,32 @@
       },
       "resume_hot_water_schedule": {
         "name": "Riprendi l'acqua calda programmazioni"
+      }
+    },
+    "select": {
+      "presence_mode": {
+        "name": "Modalità presenza",
+        "state": {
+          "home": "Casa",
+          "away": "Fuori casa",
+          "auto": "Automatico (Geofencing)"
+        }
+      },
+      "dhw_mode": {
+        "name": "Modalità acqua calda",
+        "state": {
+          "OFF": "Spento",
+          "SCHEDULE": "Programmazione",
+          "BOOST": "Boost"
+        }
+      },
+      "termination_type": {
+        "name": "Tipo terminazione",
+        "state": {
+          "TIMER": "Timer",
+          "MANUAL": "Manuale",
+          "NEXT_TIME_BLOCK": "Prossimo blocco orario"
+        }
       }
     },
     "device_tracker": {
@@ -329,32 +562,6 @@
           "locale": {
             "name": "Lingua"
           }
-        }
-      }
-    },
-    "select": {
-      "presence_mode": {
-        "name": "Modalità presenza",
-        "state": {
-          "home": "Casa",
-          "away": "Fuori casa",
-          "auto": "Automatico (Geofencing)"
-        }
-      },
-      "dhw_mode": {
-        "name": "Modalità acqua calda",
-        "state": {
-          "OFF": "Spento",
-          "SCHEDULE": "Programmazione",
-          "BOOST": "Boost"
-        }
-      },
-      "termination_type": {
-        "name": "Tipo terminazione",
-        "state": {
-          "TIMER": "Timer",
-          "MANUAL": "Manuale",
-          "NEXT_TIME_BLOCK": "Prossimo blocco orario"
         }
       }
     }

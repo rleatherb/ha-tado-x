@@ -201,7 +201,29 @@ def _get_api_usage_percentage(data: TadoXData) -> float:
         # Fall back to internal counter
         calls_used = data.api_calls_today
 
-    return min(100, round((calls_used / quota) * 100, 1))
+    return round((calls_used / quota) * 100, 1)
+
+
+def _get_api_estimated_daily_usage(data: TadoXData) -> float | None:
+    """Project the daily quota usage using the observed reset boundary.
+
+    Do not infer a reset from a fixed clock or from an unknown initial
+    baseline. Avoid extrapolation during the first hour after rollover.
+    """
+    if data.api_last_reset is None or data.api_reset_time is None:
+        return None
+    now = dt_util.utcnow()
+    elapsed = (now - data.api_last_reset).total_seconds()
+    remaining = (data.api_reset_time - now).total_seconds()
+    if elapsed < 3600 or remaining <= 0 or elapsed >= 86400:
+        return None
+    if data.api_quota_limit is None or data.api_quota_remaining is None:
+        return None
+    quota = data.api_quota_limit
+    if quota <= 0:
+        return None
+    used = max(0, quota - data.api_quota_remaining)
+    return round(used * 86400 / elapsed / quota * 100, 1)
 
 
 def _get_api_calls_today(data: TadoXData) -> int:
@@ -289,6 +311,14 @@ HOME_SENSORS: tuple[TadoXHomeSensorEntityDescription, ...] = (
         native_unit_of_measurement=PERCENTAGE,
         state_class=SensorStateClass.MEASUREMENT,
         value_fn=_get_api_usage_percentage,
+    ),
+    TadoXHomeSensorEntityDescription(
+        key="api_estimated_daily_usage",
+        translation_key="api_estimated_daily_usage",
+        icon="mdi:chart-timeline-variant",
+        native_unit_of_measurement=PERCENTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=_get_api_estimated_daily_usage,
     ),
     TadoXHomeSensorEntityDescription(
         key="api_reset_time",

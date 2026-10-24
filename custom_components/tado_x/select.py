@@ -8,6 +8,7 @@ from typing import Any
 from homeassistant.components.select import SelectEntity, SelectEntityDescription
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity import DeviceInfo, EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -70,6 +71,8 @@ async def async_setup_entry(
     if coordinator.data:
         for room_id in coordinator.data.rooms:
             entities.append(TadoXRoomTerminationType(coordinator, room_id))
+            entities.append(TadoXScheduleProfileSelect(coordinator, room_id))
+            entities.append(TadoXSaveScheduleProfileSelect(coordinator, room_id))
 
     async_add_entities(entities)
 
@@ -315,4 +318,82 @@ class TadoXRoomTerminationType(
     async def async_added_to_hass(self) -> None:
         """Initialize from the current Tado configuration."""
         await super().async_added_to_hass()
+        self.async_write_ha_state()
+
+
+class TadoXScheduleProfileSelect(CoordinatorEntity[TadoXDataUpdateCoordinator], SelectEntity):
+    """Per-room saved schedule profile, reflecting actual live Tado schedule."""
+    _attr_has_entity_name = True
+    _attr_name = "Restore schedule profile"
+    _attr_icon = "mdi:calendar-sync"
+    _attr_entity_category = EntityCategory.CONFIG
+
+    def __init__(self, coordinator, room_id):
+        super().__init__(coordinator)
+        self._room_id = room_id
+        self._attr_unique_id = f"{coordinator.home_id}_{room_id}_schedule_profile"
+
+    @property
+    def device_info(self):
+        room = self.coordinator.data.rooms.get(self._room_id)
+        return DeviceInfo(
+            identifiers={(DOMAIN, f"{self.coordinator.home_id}_{self._room_id}")},
+            name=room.name if room else f"Room {self._room_id}",
+            manufacturer="Tado", model="Tado X Room",
+            via_device_id=self.coordinator.parent_device_ids[(DOMAIN, str(self.coordinator.home_id))],
+        )
+
+    @property
+    def options(self):
+        return ["Custom"] + self.coordinator.schedule_profile_manager.selector_names(self._room_id)
+
+    @property
+    def current_option(self):
+        return self.coordinator.schedule_profile_manager.selected(self._room_id)
+
+    @property
+    def extra_state_attributes(self):
+        m = self.coordinator.schedule_profile_manager
+        key = str(self._room_id)
+        return {"match_status": m.status.get(key, "Unknown"),
+                "matching_profiles": m.matches.get(key, []),
+                "last_applied_profile": m.last_applied.get(key),
+                "saved_profiles": list(m.profiles.get(key, {}))}
+
+    async def async_added_to_hass(self):
+        await super().async_added_to_hass()
+        self.async_on_remove(self.coordinator.schedule_profile_manager.listen(self.async_write_ha_state))
+
+    async def async_select_option(self, option):
+        if option == "Custom":
+            raise HomeAssistantError("Custom is a status, not a saved schedule")
+        await self.coordinator.schedule_profile_manager.restore(self._room_id, option)
+        self.async_write_ha_state()
+
+
+class TadoXSaveScheduleProfileSelect(TadoXScheduleProfileSelect):
+    """Save the live Home and Away settings under the selected room profile.
+
+    Unlike the restore selector, this never implicitly creates a Normal backup.
+    """
+
+    _attr_name = "Save schedule profile"
+    _attr_icon = "mdi:content-save-outline"
+
+    def __init__(self, coordinator, room_id):
+        super().__init__(coordinator, room_id)
+        self._attr_unique_id = f"{coordinator.home_id}_{room_id}_save_schedule_profile"
+
+    async def async_select_option(self, option):
+        if option == "Custom":
+            raise HomeAssistantError("Custom is a status, not a profile name")
+        manager = self.coordinator.schedule_profile_manager
+        from .schedule_profiles import base_default_name
+        default = base_default_name(option)
+        if default is not None:
+            await manager.save_home_default(self._room_id, default)
+        else:
+            if option not in manager.names(self._room_id):
+                raise HomeAssistantError(f"Unknown schedule profile: {option}")
+            await manager.save(self._room_id, option)
         self.async_write_ha_state()

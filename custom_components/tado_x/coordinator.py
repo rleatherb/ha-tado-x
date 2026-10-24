@@ -66,9 +66,6 @@ class TadoXRoom:
     devices: list[TadoXDevice] = field(default_factory=list)
     # Running times data (heating duration today)
     running_time_today_seconds: int = 0
-    # Smart schedule blocks (dayType, start, end, setting), populated on demand
-    # by the per-room "Refresh Schedule" button
-    schedule: list[dict] = field(default_factory=list)
 
 
 @dataclass
@@ -122,6 +119,8 @@ class TadoXData:
     presence_locked: bool = False  # Whether presence is manually set
     api_calls_today: int = 0
     api_reset_time: datetime | None = None
+    api_last_reset: datetime | None = None
+    api_last_observed_at: datetime | None = None
     has_auto_assist: bool = False
     # Real values from Tado API response headers
     api_quota_limit: int | None = None  # From ratelimit-policy header (q=)
@@ -264,7 +263,6 @@ class TadoXDataUpdateCoordinator(DataUpdateCoordinator[TadoXData]):
             # Get rooms with devices (required)
             rooms_devices_data = await self.api.get_rooms_and_devices()
 
-            # Get home presence state (required)
             home_state = await self.api.get_home_state()
             presence = home_state.get("presence")
             presence_locked = home_state.get("presenceLocked", False)
@@ -389,10 +387,6 @@ class TadoXDataUpdateCoordinator(DataUpdateCoordinator[TadoXData]):
                 heating_power_data = room_data.get("heatingPower") or {}
                 connection_data = room_data.get("connection") or {}
 
-                # Carry over the on-demand schedule (set by the refresh button
-                # or set_schedule) so it survives this periodic refresh.
-                prev_room = self.data.rooms.get(room_id) if self.data else None
-
                 room = TadoXRoom(
                     room_id=room_id,
                     name=room_data.get("name", f"Room {room_id}"),
@@ -411,7 +405,6 @@ class TadoXDataUpdateCoordinator(DataUpdateCoordinator[TadoXData]):
                     next_schedule_change=next_change_time,
                     next_schedule_temperature=next_change_temp,
                     next_schedule_power=next_change_power,
-                    schedule=prev_room.schedule if prev_room else [],
                 )
 
                 # Add devices for this room
@@ -590,6 +583,8 @@ class TadoXDataUpdateCoordinator(DataUpdateCoordinator[TadoXData]):
             # Populate API stats (prefer real values from headers when available)
             data.api_calls_today = self.api.api_calls_today
             data.api_reset_time = self.api.api_reset_time
+            data.api_last_reset = self.api.api_last_reset
+            data.api_last_observed_at = self.api.api_last_observed_at
             data.has_auto_assist = self.api.has_auto_assist
             data.api_quota_limit = self.api.api_quota_limit
             data.api_quota_remaining = self.api.api_quota_remaining

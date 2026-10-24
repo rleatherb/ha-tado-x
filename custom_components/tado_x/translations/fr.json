@@ -1,0 +1,569 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Authentification Tado X",
+        "description": "Cliquez sur Envoyer pour commencer l’authentification Tado. Vous serez redirigé pour autoriser cette intégration."
+      },
+      "auth": {
+        "title": "Autoriser Tado X",
+        "description": "Visitez l’URL suivante et saisissez le code pour autoriser Home Assistant :\n\n**URL :** {verification_uri}\n\n**Code :** `{user_code}`\n\nAprès l’autorisation, cliquez sur Envoyer."
+      },
+      "select_home": {
+        "title": "Sélectionner le domicile",
+        "description": "Plusieurs domiciles Tado ont été trouvés. Sélectionnez celui à configurer.",
+        "data": {
+          "home_id": "Domicile"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Réauthentifier Tado X",
+        "description": "Votre authentification Tado X a expiré. Cliquez sur Envoyer pour vous réauthentifier."
+      },
+      "reauth_auth": {
+        "title": "Autoriser Tado X",
+        "description": "Visitez l’URL suivante et saisissez le code pour autoriser Home Assistant :\n\n**URL :** {verification_uri}\n\n**Code :** `{user_code}`\n\nAprès l’autorisation, cliquez sur Envoyer."
+      }
+    },
+    "error": {
+      "auth_error": "Échec de l’authentification. Réessayez.",
+      "auth_timeout": "Délai d’authentification dépassé. Vérifiez l’autorisation, puis réessayez.",
+      "cannot_connect": "Connexion à Tado impossible. Vérifiez votre connexion Internet.",
+      "no_homes": "Aucun domicile Tado trouvé pour ce compte.",
+      "unknown": "Une erreur inconnue s’est produite."
+    },
+    "abort": {
+      "already_configured": "Ce domicile Tado est déjà configuré.",
+      "reauth_successful": "Réauthentification réussie.",
+      "unknown": "Une erreur inconnue s’est produite."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Options Tado X",
+        "description": "Configurez les paramètres de l’intégration Tado X.\n\n**Quota API :**\n- Sans Auto-Assist : 100 requêtes/jour → actualisation toutes les 45 min\n- Avec Auto-Assist : 20 000 requêtes/jour → actualisation toutes les 30 s",
+        "data": {
+          "has_auto_assist": "Abonnement Auto-Assist",
+          "scan_interval": "Intervalle d’actualisation (secondes)",
+          "enable_weather": "Activer les capteurs météo",
+          "enable_mobile_devices": "Activer le suivi des appareils mobiles",
+          "enable_air_comfort": "Activer les capteurs de confort",
+          "enable_running_times": "Activer les capteurs de durée de chauffage",
+          "enable_flow_temp": "Activer le contrôle de température de départ",
+          "enable_hot_water": "Activer le capteur d’eau chaude",
+          "enable_schedule_polling": "Vérifier automatiquement les modifications des programmes",
+          "schedule_poll_interval": "Intervalle de vérification des programmes (secondes)"
+        },
+        "data_description": {
+          "has_auto_assist": "Activez cette option si vous disposez d’un abonnement Auto-Assist. L’intervalle d’actualisation sera ajusté automatiquement.",
+          "scan_interval": "Fréquence d’interrogation de l’API Tado (secondes). Minimum : 30 s ; maximum : 3 600 s. Sans Auto-Assist, utilisez 2 700 s (45 min) pour rester sous 100 requêtes par jour.",
+          "enable_weather": "Active les capteurs de température extérieure, d’ensoleillement et de météo. Consomme un appel API par actualisation.",
+          "enable_mobile_devices": "Active le suivi des téléphones mobiles par géolocalisation. Consomme un appel API par actualisation.",
+          "enable_air_comfort": "Active les capteurs de fraîcheur de l’air et de confort par pièce. Consomme un appel API par actualisation.",
+          "enable_running_times": "Active les capteurs de durée de chauffage quotidienne par pièce. Consomme un appel API par actualisation.",
+          "enable_flow_temp": "Active le réglage de la température maximale de départ et son adaptation automatique (chaudière OpenTherm requise). Consomme un appel API par actualisation.",
+          "enable_hot_water": "Active le capteur d’état de l’eau chaude sanitaire. Consomme un appel API par actualisation.",
+          "enable_schedule_polling": "Vérifie les programmes Maison et Absence. Utilise 2 appels API par pièce et par mise à jour. Activé par défaut avec Auto-Assist, désactivé sinon.",
+          "schedule_poll_interval": "Fréquence des vérifications lorsque cette option est activée. Minimum : 900 secondes (15 minutes) ; défaut : 3 600 secondes (1 heure) ; maximum : 86 400 secondes (24 heures)."
+        }
+      }
+    }
+  },
+  "services": {
+    "set_temperature_offset": {
+      "name": "Régler le décalage de température",
+      "description": "Ajuste le décalage de température d’un appareil Tado X (vanne ou capteur) afin d’étalonner sa mesure.",
+      "fields": {
+        "device_id": {
+          "name": "Appareil",
+          "description": "Appareil Tado X à étalonner."
+        },
+        "offset": {
+          "name": "Décalage de température",
+          "description": "Décalage en °C. Une valeur positive augmente la température affichée ; une valeur négative la diminue."
+        }
+      }
+    },
+    "add_meter_reading": {
+      "name": "Ajouter un relevé de compteur",
+      "description": "Envoie un relevé de compteur à Tado Energy IQ.",
+      "fields": {
+        "device_id": {
+          "name": "Appareil du domicile Tado X",
+          "description": "Sélectionnez l’appareil Tado X du domicile uniquement si plusieurs domiciles sont configurés."
+        },
+        "reading": {
+          "name": "Relevé",
+          "description": "Valeur entière du relevé de compteur."
+        },
+        "date": {
+          "name": "Date",
+          "description": "Date au format AAAA-MM-JJ ; aujourd’hui par défaut."
+        }
+      }
+    },
+    "set_eiq_tariff": {
+      "name": "Définir le tarif énergétique",
+      "description": "Définit un tarif énergétique dans Tado Energy IQ pour calculer les coûts.",
+      "fields": {
+        "device_id": {
+          "name": "Appareil du domicile Tado X",
+          "description": "Sélectionnez l’appareil Tado X du domicile uniquement si plusieurs domiciles sont configurés."
+        },
+        "tariff": {
+          "name": "Tarif",
+          "description": "Prix par unité (par exemple 0,85 €/m³)."
+        },
+        "unit": {
+          "name": "Unité",
+          "description": "Unité énergétique : m³ ou kWh."
+        },
+        "start_date": {
+          "name": "Date de début",
+          "description": "Date de début ; format AAAA-MM-JJ ou date et heure ISO 8601 selon l’action."
+        },
+        "end_date": {
+          "name": "Date de fin",
+          "description": "Date de fin ; format AAAA-MM-JJ ou date et heure ISO 8601 selon l’action."
+        }
+      }
+    },
+    "set_climate_timer": {
+      "name": "Régler la dérogation de chauffage",
+      "description": "Définit une dérogation de température. Minuterie (par défaut) : température et durée obligatoires ; Manuel : température obligatoire ; Prochaine plage horaire : température obligatoire, durée inutile.",
+      "fields": {
+        "entity_id": {
+          "name": "Entité de chauffage",
+          "description": "Pièce Tado X à consulter ou à contrôler."
+        },
+        "temperature": {
+          "name": "Température",
+          "description": "Température obligatoire pour Minuterie, Manuel et Prochaine plage horaire."
+        },
+        "duration": {
+          "name": "Durée",
+          "description": "Obligatoire uniquement pour Minuterie (1 à 1440 minutes) ; ignorée pour les autres modes."
+        },
+        "termination_type": {
+          "name": "Type de fin",
+          "description": "Minuterie par défaut (température et durée obligatoires) ; Manuel et Prochaine plage horaire (température obligatoire uniquement)."
+        }
+      }
+    },
+    "get_schedule": {
+      "name": "Obtenir le programme",
+      "description": "Lit la programmation de chauffage actuelle d’une pièce et renvoie les plages horaires.",
+      "fields": {
+        "entity_id": {
+          "name": "Entité de chauffage",
+          "description": "Pièce Tado X à consulter ou à contrôler."
+        }
+      }
+    },
+    "get_away_schedule": {
+      "name": "Obtenir le programme Absence",
+      "description": "Lit les réglages d’absence enregistrés pour une pièce sans les modifier.",
+      "fields": {
+        "entity_id": {
+          "name": "Entité de chauffage",
+          "description": "Pièce Tado X à consulter ou à contrôler."
+        }
+      }
+    },
+    "set_away_schedule": {
+      "name": "Définir le programme Absence",
+      "description": "Modifie le mode Absence, sa température et éventuellement le préchauffage d’une pièce. Les profils enregistrés restent inchangés.",
+      "fields": {
+        "entity_id": {
+          "name": "Entité de chauffage",
+          "description": "Pièce Tado X à consulter ou à contrôler."
+        },
+        "mode": {
+          "name": "Mode Absence",
+          "description": "Active ou désactive le contrôle de température en mode Absence."
+        },
+        "away_temperature": {
+          "name": "Température en absence",
+          "description": "Température en °C pour le mode Absence activé ; la valeur existante est conservée si omise."
+        },
+        "preheating_level": {
+          "name": "Niveau de préchauffage",
+          "description": "Niveau de préchauffage facultatif ; conserve le réglage actuel si omis."
+        }
+      }
+    },
+    "set_schedule": {
+      "name": "Définir le programme",
+      "description": "Modifie la programmation de chauffage d’une pièce en remplaçant les plages du type de jour indiqué.",
+      "fields": {
+        "entity_id": {
+          "name": "Entité de chauffage",
+          "description": "Pièce Tado X à consulter ou à contrôler."
+        },
+        "day_type": {
+          "name": "Type de jour",
+          "description": "Jour ou groupe de jours auquel appliquer le programme."
+        },
+        "schedule": {
+          "name": "Plages horaires",
+          "description": "Tableau JSON des plages horaires avec heures de début, de fin et température."
+        }
+      }
+    },
+    "get_day_report": {
+      "name": "Obtenir le rapport journalier",
+      "description": "Lit l’historique de température, d’humidité et de chauffage d’une pièce à une date donnée. Les dates passées nécessitent Auto-Assist (Premium).",
+      "fields": {
+        "entity_id": {
+          "name": "Entité de chauffage",
+          "description": "Pièce Tado X à consulter ou à contrôler."
+        },
+        "date": {
+          "name": "Date",
+          "description": "Date au format AAAA-MM-JJ ; aujourd’hui par défaut."
+        }
+      }
+    },
+    "get_holiday_mode": {
+      "name": "Obtenir le mode Vacances",
+      "description": "Lit les réglages du mode Vacances du domicile. Nécessite Auto-Assist (Premium).",
+      "fields": {
+        "device_id": {
+          "name": "Appareil du domicile Tado X",
+          "description": "Sélectionnez l’appareil Tado X du domicile uniquement si plusieurs domiciles sont configurés."
+        }
+      }
+    },
+    "set_holiday_mode": {
+      "name": "Définir le mode Vacances",
+      "description": "Active ou désactive le mode Vacances et définit éventuellement les dates de début et de fin. Nécessite Auto-Assist (Premium).",
+      "fields": {
+        "device_id": {
+          "name": "Appareil du domicile Tado X",
+          "description": "Sélectionnez l’appareil Tado X du domicile uniquement si plusieurs domiciles sont configurés."
+        },
+        "enabled": {
+          "name": "Activé",
+          "description": "Active (true) ou désactive (false) le mode Vacances."
+        },
+        "start_date": {
+          "name": "Date de début",
+          "description": "Date de début ; format AAAA-MM-JJ ou date et heure ISO 8601 selon l’action."
+        },
+        "end_date": {
+          "name": "Date de fin",
+          "description": "Date de fin ; format AAAA-MM-JJ ou date et heure ISO 8601 selon l’action."
+        }
+      }
+    },
+    "save_schedule_profile": {
+      "name": "Enregistrer un profil de programmation",
+      "description": "Enregistre les programmes Domicile et Absence dans un profil de pièce ou un modèle commun au domicile.",
+      "fields": {
+        "entity_id": {
+          "name": "Entité de chauffage"
+        },
+        "profile": {
+          "name": "Nom du profil"
+        }
+      }
+    },
+    "restore_schedule_profile": {
+      "name": "Restaurer un profil de programmation",
+      "description": "Restaure un profil de pièce ou un modèle commun au domicile.",
+      "fields": {
+        "entity_id": {
+          "name": "Entité de chauffage"
+        },
+        "profile": {
+          "name": "Nom du profil"
+        }
+      }
+    },
+    "list_schedule_profiles": {
+      "name": "Lister les profils de programmation",
+      "description": "Liste les profils de programmation d’une pièce, enregistrés ou non.",
+      "fields": {
+        "entity_id": {
+          "name": "Entité de chauffage"
+        }
+      }
+    },
+    "delete_schedule_profile": {
+      "name": "Supprimer un profil de programmation",
+      "description": "Supprime un profil de programmation personnalisé. Les noms des profils par défaut ne peuvent pas être supprimés.",
+      "fields": {
+        "entity_id": {
+          "name": "Entité de chauffage"
+        },
+        "profile": {
+          "name": "Nom du profil"
+        }
+      }
+    },
+    "reset_schedule_default": {
+      "name": "Réinitialiser le programme par défaut du domicile",
+      "description": "Supprime un modèle personnalisé du domicile et rétablit le programme d’usine, sans modifier les pièces.",
+      "fields": {
+        "device_id": {
+          "name": "Appareil du domicile Tado X",
+          "description": "Sélectionnez l’appareil Tado X du domicile uniquement si plusieurs domiciles sont configurés."
+        },
+        "profile": {
+          "name": "Nom du profil par défaut",
+          "description": "Normal, Alternative, Eco ou Not in use (suffixe default facultatif)."
+        }
+      }
+    }
+  },
+  "entity": {
+    "climate": {
+      "tado_x": {
+        "state_attributes": {
+          "preset_mode": {
+            "state": {
+              "home": "Domicile",
+              "away": "Absent",
+              "auto": "Auto (géolocalisation)",
+              "schedule": "Programme"
+            }
+          }
+        }
+      }
+    },
+    "sensor": {
+      "temperature": {
+        "name": "Température"
+      },
+      "humidity": {
+        "name": "Humidité"
+      },
+      "heating_power": {
+        "name": "Puissance de chauffage"
+      },
+      "heating_time_today": {
+        "name": "Durée de chauffage aujourd’hui"
+      },
+      "next_schedule_change": {
+        "name": "Prochain changement de programme"
+      },
+      "next_schedule_temperature": {
+        "name": "Prochaine température programmée"
+      },
+      "next_schedule_power": {
+        "name": "Prochain état de chauffage programmé"
+      },
+      "battery": {
+        "name": "Batterie",
+        "state": {
+          "normal": "Normal",
+          "low": "Faible"
+        }
+      },
+      "device_temperature": {
+        "name": "Température de l’appareil"
+      },
+      "temperature_offset": {
+        "name": "Temperature Offset"
+      },
+      "api_calls_today": {
+        "name": "Appels API aujourd’hui"
+      },
+      "api_quota_remaining": {
+        "name": "Quota API restant"
+      },
+      "api_quota_limit": {
+        "name": "Limite du quota API"
+      },
+      "api_usage_percentage": {
+        "name": "Utilisation actuelle de l’API"
+      },
+      "api_estimated_daily_usage": {
+        "name": "Utilisation quotidienne estimée de l’API"
+      },
+      "api_reset_time": {
+        "name": "Réinitialisation du quota API"
+      },
+      "api_status": {
+        "name": "État de l’API",
+        "state": {
+          "OK": "OK",
+          "RATE_LIMITED": "Limite de requêtes atteinte"
+        }
+      },
+      "presence_state": {
+        "name": "Présence",
+        "state": {
+          "HOME": "Domicile",
+          "AWAY": "Absent"
+        }
+      },
+      "presence_mode": {
+        "name": "Mode de présence",
+        "state": {
+          "AUTO": "Auto (géolocalisation)",
+          "MANUAL": "Commande manuelle"
+        }
+      },
+      "outdoor_temperature": {
+        "name": "Température extérieure"
+      },
+      "solar_intensity": {
+        "name": "Intensité solaire"
+      },
+      "weather_state": {
+        "name": "Météo",
+        "state": {
+          "SUNNY": "Ensoleillé",
+          "CLOUDY": "Nuageux",
+          "CLOUDY_PARTLY": "Partiellement nuageux",
+          "CLOUDY_MOSTLY": "Très nuageux",
+          "NIGHT_CLEAR": "Nuit dégagée",
+          "NIGHT_CLOUDY": "Nuit nuageuse",
+          "RAIN": "Pluie",
+          "DRIZZLE": "Bruine",
+          "SNOW": "Neige",
+          "FOGGY": "Brouillard",
+          "THUNDERSTORMS": "Orages",
+          "WINDY": "Venteux"
+        }
+      },
+      "air_freshness": {
+        "name": "Niveau d’humidité",
+        "state": {
+          "humid": "Humide",
+          "comfy": "Confortable",
+          "dry": "Sec"
+        }
+      },
+      "comfort_level": {
+        "name": "Niveau de confort",
+        "state": {
+          "cold": "Froid",
+          "comfy": "Confortable",
+          "warm": "Chaud"
+        }
+      },
+      "home_id": {
+        "name": "Identifiant du domicile Tado"
+      }
+    },
+    "binary_sensor": {
+      "window_open": {
+        "name": "Fenêtre ouverte"
+      },
+      "heating": {
+        "name": "Chauffage"
+      },
+      "overlay_active": {
+        "name": "Commande manuelle"
+      },
+      "connectivity": {
+        "name": "Connectivité"
+      },
+      "battery_low": {
+        "name": "Batterie faible"
+      }
+    },
+    "switch": {
+      "child_lock": {
+        "name": "Verrouillage enfant"
+      },
+      "open_window": {
+        "name": "Ouvrir la fenêtre"
+      },
+      "flow_temp_auto_adaptation": {
+        "name": "Adaptation automatique de la température de départ"
+      }
+    },
+    "number": {
+      "max_flow_temperature": {
+        "name": "Température maximale de départ"
+      },
+      "timer_duration": {
+        "name": "Durée de la minuterie"
+      }
+    },
+    "button": {
+      "boost_all": {
+        "name": "Tout augmenter"
+      },
+      "disable_all": {
+        "name": "Tout éteindre"
+      },
+      "refresh_schedule": {
+        "name": "Actualiser le programme"
+      },
+      "resume_schedules": {
+        "name": "Reprendre les programmes"
+      },
+      "boost_hot_water": {
+        "name": "Augmenter l’eau chaude"
+      },
+      "disable_hot_water": {
+        "name": "Couper l’eau chaude"
+      },
+      "resume_hot_water_schedule": {
+        "name": "Reprendre le programme d’eau chaude"
+      }
+    },
+    "select": {
+      "presence_mode": {
+        "name": "Mode de présence",
+        "state": {
+          "home": "Domicile",
+          "away": "Absent",
+          "auto": "Auto (géolocalisation)"
+        }
+      },
+      "dhw_mode": {
+        "name": "Mode eau chaude",
+        "state": {
+          "OFF": "Arrêt",
+          "SCHEDULE": "Programme",
+          "BOOST": "Boost"
+        }
+      },
+      "termination_type": {
+        "name": "Type de fin",
+        "state": {
+          "TIMER": "Minuterie",
+          "MANUAL": "Manuel",
+          "NEXT_TIME_BLOCK": "Prochaine plage horaire"
+        }
+      }
+    },
+    "device_tracker": {
+      "mobile_device": {
+        "name": "Appareil mobile",
+        "state": {
+          "home": "Domicile",
+          "away": "Absent",
+          "not_tracking": "Suivi désactivé",
+          "unknown": "Inconnu"
+        },
+        "state_attributes": {
+          "geofencing_enabled": {
+            "name": "Géolocalisation activée"
+          },
+          "at_home": {
+            "name": "Au domicile"
+          },
+          "platform": {
+            "name": "Plateforme"
+          },
+          "os_version": {
+            "name": "Version du système"
+          },
+          "model": {
+            "name": "Modèle"
+          },
+          "locale": {
+            "name": "Langue régionale"
+          }
+        }
+      }
+    }
+  }
+}
